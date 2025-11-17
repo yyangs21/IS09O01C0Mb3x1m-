@@ -169,7 +169,7 @@ if ent_area.empty:
     st.info("No hay entregables asignados para esta área.")
 else:
     for _, r in ent_area.iterrows():
-        st.markdown(f"<div class='card'><strong>{r.get('Categoría','')}</strong><br>{r.get('Entregable','')}<br><span class='small'>Estado: {r.get('Estado','')}</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='card'><strong>{r.get('Categoria','')}</strong><br>{r.get('Entregable','')}<br><span class='small'>Estado: {r.get('Estado','')}</span></div>", unsafe_allow_html=True)
 
 # ---------------------------
 # NUEVO ENTREGABLE
@@ -177,7 +177,7 @@ else:
 st.markdown("### Registrar / Analizar un entregable")
 col_a, col_b = st.columns([2,1])
 with col_a:
-    nueva_categoria = st.text_input("Categoría", value="")
+    nueva_categoria = st.text_input("Categoria", value="")
     nuevo_entregable = st.text_input("Entregable / Tarea", value="")
     nota_descr = st.text_area("Descripción / Comentarios", value="", height=120)
     archivo = st.file_uploader("Subir archivo entregable (PDF/Word/Excel)", type=["pdf","docx","xlsx"])
