@@ -21,35 +21,26 @@ from googleapiclient.http import MediaIoBaseUpload
 load_dotenv()
 st.set_page_config(page_title="Formulario ISO 9001 — Inteligente", layout="wide", page_icon="📄")
 
-# CSS / Diseño visual
-st.markdown(
-    """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-    html, body, [class*="css"]  { font-family: 'Inter', sans-serif; }
-    .header { border-radius:12px; padding:14px; background: linear-gradient(90deg,#f7fbff, #ffffff); box-shadow: 0 6px 20px rgba(13,38,66,0.06); text-align:center;}
-    .card { background:#fff; padding:12px; border-radius:10px; box-shadow:0 6px 18px rgba(12,40,80,0.04); margin-bottom:10px; }
-    .chip { display:inline-block; padding:6px 10px; margin:4px; border-radius:18px; background:#f1f7ff; border:1px solid #e1efff; font-size:14px; }
-    .small{ font-size:13px; color:#666; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+# CSS
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+html, body, [class*="css"]  { font-family: 'Inter', sans-serif; }
+.header { border-radius:12px; padding:14px; background: linear-gradient(90deg,#f7fbff, #ffffff); box-shadow: 0 6px 20px rgba(13,38,66,0.06); text-align:center;}
+.card { background:#fff; padding:12px; border-radius:10px; box-shadow:0 6px 18px rgba(12,40,80,0.04); margin-bottom:10px; }
+.chip { display:inline-block; padding:6px 10px; margin:4px; border-radius:18px; background:#f1f7ff; border:1px solid #e1efff; font-size:14px; }
+.small{ font-size:13px; color:#666; }
+</style>
+""", unsafe_allow_html=True)
 
-def load_image_try(path, width=None, height=None):
+def load_image_try(path):
     try:
-        img = Image.open(path)
-        if width and height:
-            img = img.resize((width, height))
-        elif width:
-            ratio = width / img.width
-            img = img.resize((width, int(img.height * ratio)))
-        return img
+        return Image.open(path)
     except Exception:
         return None
 
 # ---------------------------
-# CARGAR CREDENCIALES
+# CREDENCIALES
 # ---------------------------
 OPENAI_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
 if OPENAI_KEY:
@@ -57,44 +48,42 @@ if OPENAI_KEY:
 
 def get_gspread_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = None
     if "SERVICE_ACCOUNT_JSON" in st.secrets:
         sa_info = st.secrets["SERVICE_ACCOUNT_JSON"]
-        if isinstance(sa_info, str):
-            sa_json = json.loads(sa_info)
-        else:
-            sa_json = sa_info
+        sa_json = json.loads(sa_info) if isinstance(sa_info, str) else sa_info
         creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_json, scope)
-        return gspread.authorize(creds)
     elif os.path.exists("service_account.json"):
         creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
-        return gspread.authorize(creds)
-    else:
+    if not creds:
         st.error("No se encontró credencial de Google Sheets.")
         st.stop()
+    return gspread.authorize(creds)
 
 def get_drive_service():
     scope = ["https://www.googleapis.com/auth/drive"]
+    creds = None
     if "SERVICE_ACCOUNT_JSON" in st.secrets:
         sa_info = st.secrets["SERVICE_ACCOUNT_JSON"]
-        if isinstance(sa_info, str):
-            sa_json = json.loads(sa_info)
-        else:
-            sa_json = sa_info
+        sa_json = json.loads(sa_info) if isinstance(sa_info, str) else sa_info
         creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_json, scope)
-        return build('drive', 'v3', credentials=creds)
     elif os.path.exists("service_account.json"):
         creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
-        return build('drive', 'v3', credentials=creds)
-    else:
+    if not creds:
         st.error("No se encontró credencial de Google Drive.")
         st.stop()
+    return build('drive', 'v3', credentials=creds)
 
 # ---------------------------
-# LEER SHEETS
+# HOJA SHEETS
 # ---------------------------
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1mQY0_MEjluVT95iat5_5qGyffBJGp2n0hwEChvp2Ivs"
+SHEET_KEY = "1mQY0_MEjluVT95iat5_5qGyffBJGp2n0hwEChvp2Ivs"  # solo key, sin parámetros extras
 gc = get_gspread_client()
-sh = gc.open_by_url(SHEET_URL)
+try:
+    sh = gc.open_by_key(SHEET_KEY)
+except Exception as e:
+    st.error(f"No se pudo abrir Google Sheet: {e}")
+    st.stop()
 
 def load_sheets():
     df_areas = pd.DataFrame(sh.worksheet("Areas").get_all_records())
@@ -105,7 +94,7 @@ def load_sheets():
 df_areas, df_claus, df_ent = load_sheets()
 
 # ---------------------------
-# VALIDAR HOJA AREAS
+# VALIDACIÓN HOJA AREAS
 # ---------------------------
 required_areas_cols = ["Area", "Dueño del Proceso", "Puesto", "Correo"]
 actual_cols_norm = [c.strip().lower() for c in df_areas.columns]
@@ -115,7 +104,6 @@ if not set(required_cols_norm).issubset(actual_cols_norm):
     st.error(f"La hoja 'Areas' debe contener columnas: {required_areas_cols}. Revisa nombres exactos.")
     st.stop()
 
-# Renombrar columnas
 col_mapping = {}
 for req_col in required_areas_cols:
     for actual_col in df_areas.columns:
@@ -126,16 +114,15 @@ df_areas.rename(columns=col_mapping, inplace=True)
 # ---------------------------
 # HEADER
 # ---------------------------
-header_img = load_image_try("assets/Encabezado.png", width=800, height=120) or load_image_try("Encabezado.png", width=800, height=120)
+header_img = load_image_try("assets/Encabezado.png") or load_image_try("Encabezado.png")
 if header_img:
-    st.image(header_img)
+    st.image(header_img, width=800, height=120)
 else:
     st.markdown("<div class='header'><h2>📄 Formulario ISO 9001 — Inteligente</h2></div>", unsafe_allow_html=True)
-
 st.write("")
 
 # ---------------------------
-# SELECTOR DE AREA
+# SELECCIÓN DE ÁREA
 # ---------------------------
 left, right = st.columns([2,1])
 with left:
@@ -171,7 +158,7 @@ else:
         st.markdown(f"<div class='card'><strong>{r.get('Categoría','')}</strong><br>{r.get('Entregable','')}<br><span class='small'>Estado: {r.get('Estado','')}</span></div>", unsafe_allow_html=True)
 
 # ---------------------------
-# NUEVO ENTREGABLE
+# NUEVO ENTREGABLE / COMENTARIO
 # ---------------------------
 st.markdown("### Registrar / Analizar un entregable")
 col_a, col_b = st.columns([2,1])
@@ -240,7 +227,6 @@ if st.button("💾 Guardar entregable"):
         file_url = ""
         if archivo:
             try:
-                archivo.seek(0)
                 file_metadata = {"name": archivo.name, "parents": [DRIVE_FOLDER_ID]}
                 media = MediaIoBaseUpload(archivo, mimetype=archivo.type, resumable=True)
                 file_drive = drive_service.files().create(body=file_metadata, media_body=media, fields="id, webViewLink").execute()
@@ -300,9 +286,8 @@ if st.button("📥 Generar y descargar PDF"):
 # ---------------------------
 # FOOTER
 # ---------------------------
-footer_img = load_image_try("assets/Pie.png", width=800, height=80) or load_image_try("Pie.png", width=800, height=80)
+footer_img = load_image_try("assets/Pie.png") or load_image_try("Pie.png")
 if footer_img:
-    st.image(footer_img)
+    st.image(footer_img, width=800, height=80)
 else:
     st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#777;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
-
