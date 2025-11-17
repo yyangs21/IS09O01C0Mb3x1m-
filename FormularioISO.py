@@ -16,108 +16,110 @@ from PIL import Image
 # ---------------------------
 # CONFIG
 # ---------------------------
-load_dotenv()  # carga .env local si existe
+load_dotenv()
 st.set_page_config(page_title="Formulario ISO 9001 — Inteligente", layout="wide", page_icon="📄")
 
-# CSS / Diseño visual
+# CSS / Diseño
 st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-html, body, [class*="css"]  { font-family: 'Inter', sans-serif; }
-.header { border-radius:12px; padding:14px; background: linear-gradient(90deg,#f7fbff, #ffffff); box-shadow: 0 6px 20px rgba(13,38,66,0.06); }
-.card { background:#fff; padding:12px; border-radius:10px; box-shadow:0 6px 18px rgba(12,40,80,0.04); margin-bottom:10px; }
-.chip { display:inline-block; padding:6px 10px; margin:4px; border-radius:18px; background:#f1f7ff; border:1px solid #e1efff; font-size:14px; }
-.small{ font-size:13px; color:#666; }
-</style>
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+    .header { border-radius:12px; padding:14px; background: linear-gradient(90deg,#f7fbff, #ffffff); box-shadow: 0 6px 20px rgba(13,38,66,0.06); }
+    .card { background:#fff; padding:12px; border-radius:10px; box-shadow:0 6px 18px rgba(12,40,80,0.04); margin-bottom:10px; }
+    .chip { display:inline-block; padding:6px 10px; margin:4px; border-radius:18px; background:#f1f7ff; border:1px solid #e1efff; font-size:14px; }
+    .small{ font-size:13px; color:#666; }
+    </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------
-# Funciones utilitarias
+# FUNCIONES
 # ---------------------------
 def load_image_try(path):
     try:
         return Image.open(path)
-    except Exception:
+    except:
         return None
 
+# Header y Footer con tamaño manual
+def display_header():
+    header_img = load_image_try("assets/Encabezado.png") or load_image_try("Encabezado.png")
+    if header_img:
+        header_resized = header_img.resize((800, 120))
+        st.image(header_resized)
+    else:
+        st.markdown(
+            "<div class='header'><h2>📄 Formulario ISO 9001 — Inteligente</h2>"
+            "<p class='small'>Actualiza Google Sheets → la app se actualiza automáticamente</p></div>",
+            unsafe_allow_html=True
+        )
+
+def display_footer():
+    footer_img = load_image_try("assets/Pie.png") or load_image_try("Pie.png")
+    if footer_img:
+        footer_resized = footer_img.resize((800, 60))
+        st.image(footer_resized)
+    else:
+        st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#777;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
+
 # ---------------------------
-# CARGAR CREDENCIALES
+# CARGA CREDENCIALES
 # ---------------------------
 OPENAI_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
 if OPENAI_KEY:
     openai.api_key = OPENAI_KEY
 else:
-    st.warning("OPENAI API key no detectada. Algunas funciones de IA no estarán disponibles.")
+    st.warning("OpenAI API key no detectada.")
 
 def get_gspread_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     if "SERVICE_ACCOUNT_JSON" in st.secrets:
-        try:
-            sa_info = st.secrets["SERVICE_ACCOUNT_JSON"]
-            sa_json = json.loads(sa_info) if isinstance(sa_info, str) else sa_info
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_json, scope)
-            return gspread.authorize(creds)
-        except Exception as e:
-            st.error(f"Error autenticando con SERVICE_ACCOUNT_JSON en secrets: {e}")
-            raise e
+        sa_info = st.secrets["SERVICE_ACCOUNT_JSON"]
+        sa_json = json.loads(sa_info) if isinstance(sa_info, str) else sa_info
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_json, scope)
+        return gspread.authorize(creds)
     elif os.path.exists("service_account.json"):
-        try:
-            creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
-            return gspread.authorize(creds)
-        except Exception as e:
-            st.error(f"Error autenticando con service_account.json local: {e}")
-            raise e
+        creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
+        return gspread.authorize(creds)
     else:
         st.error("No se encontró credencial de Google Sheets.")
         st.stop()
 
 # ---------------------------
-# Leer hojas en tiempo real
+# CONEXIÓN GOOGLE SHEETS
 # ---------------------------
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1mQY0_MEjluVT95iat5_5qGyffBJGp2n0hwEChvp2Ivs"
 
+@st.cache_data(ttl=30)  # se actualiza automáticamente cada 30 segundos
 def load_sheets():
-    try:
-        gc = get_gspread_client()
-        sh = gc.open_by_url(SHEET_URL)
-        df_areas = pd.DataFrame(sh.worksheet("Areas").get_all_records())
-        df_claus = pd.DataFrame(sh.worksheet("Clausulas").get_all_records())
-        df_ent = pd.DataFrame(sh.worksheet("Entregables").get_all_records())
-
-        # Validación de columnas
-        required_areas_cols = ["Area", "Dueño del Proceso", "Puesto", "Correo"]
-        actual_cols_norm = [c.strip().lower() for c in df_areas.columns]
-        required_cols_norm = [c.strip().lower() for c in required_areas_cols]
-        if not set(required_cols_norm).issubset(actual_cols_norm):
-            st.error(f"La hoja 'Areas' debe contener columnas: {required_areas_cols}. Revisa nombres exactos.")
-            st.stop()
-
-        # Renombrar columnas para usar nombres estándar
-        col_mapping = {actual: req for req in required_areas_cols for actual in df_areas.columns
-                       if req.strip().lower() == actual.strip().lower()}
-        df_areas.rename(columns=col_mapping, inplace=True)
-        return df_areas, df_claus, df_ent
-
-    except Exception as e:
-        st.error(f"Error leyendo Google Sheets: {e}")
-        st.stop()
+    gc = get_gspread_client()
+    sh = gc.open_by_url(SHEET_URL)
+    df_areas = pd.DataFrame(sh.worksheet("Areas").get_all_records())
+    df_claus = pd.DataFrame(sh.worksheet("Clausulas").get_all_records())
+    df_ent = pd.DataFrame(sh.worksheet("Entregables").get_all_records())
+    return df_areas, df_claus, df_ent
 
 df_areas, df_claus, df_ent = load_sheets()
 
 # ---------------------------
-# Header con tamaño manual
+# VALIDACIÓN HOJA AREAS
 # ---------------------------
-header_img = load_image_try("assets/Encabezado.png") or load_image_try("Encabezado.png")
-if header_img:
-    st.image(header_img, width=800, height=120)
-else:
-    st.markdown("<div class='header'><h2>📄 Formulario ISO 9001 — Inteligente</h2>"
-                "<p class='small'>Actualiza Google Sheets → la app se actualiza automáticamente</p></div>",
-                unsafe_allow_html=True)
+required_areas_cols = ["Area", "Dueño del Proceso", "Puesto", "Correo"]
+actual_cols_norm = [c.strip().lower() for c in df_areas.columns]
+required_cols_norm = [c.strip().lower() for c in required_areas_cols]
+if not set(required_cols_norm).issubset(actual_cols_norm):
+    st.error(f"La hoja 'Areas' debe contener columnas: {required_areas_cols}. Revisa nombres exactos.")
+    st.stop()
+
+# Renombrar columnas a estándar
+col_mapping = {actual: req for req in required_areas_cols for actual in df_areas.columns if actual.strip().lower() == req.strip().lower()}
+df_areas.rename(columns=col_mapping, inplace=True)
 
 # ---------------------------
-# UI: selector área + info
+# INTERFAZ
 # ---------------------------
+display_header()
+st.write("")
+
 left, right = st.columns([2,1])
 with left:
     area = st.selectbox("Selecciona tu área", options=df_areas["Area"].unique())
@@ -127,12 +129,10 @@ with right:
         st.experimental_rerun()
 
 st.write("")
-
 info = df_areas[df_areas["Area"] == area].iloc[0]
-st.markdown(f"<div class='card'><strong>{area}</strong><br>"
-            f"<span class='small'>Dueño: {info['Dueño del Proceso']} &nbsp; | &nbsp; Puesto: {info['Puesto']} &nbsp; | &nbsp; {info.get('Correo','')}</span></div>",
-            unsafe_allow_html=True)
+st.markdown(f"<div class='card'><strong>{area}</strong><br><span class='small'>Dueño: {info['Dueño del Proceso']} &nbsp; | &nbsp; Puesto: {info['Puesto']} &nbsp; | &nbsp; {info.get('Correo','')}</span></div>", unsafe_allow_html=True)
 
+# Cláusulas
 st.subheader("Cláusulas ISO aplicables")
 cl_area = df_claus[df_claus["Area"] == area]
 if cl_area.empty:
@@ -141,18 +141,16 @@ else:
     for _, r in cl_area.iterrows():
         st.markdown(f"<span class='chip'>{r.get('Clausula','')} — {r.get('Descripción','')}</span>", unsafe_allow_html=True)
 
+# Entregables
 st.subheader("Entregables asignados")
 ent_area = df_ent[df_ent["Area"] == area]
 if ent_area.empty:
     st.info("No hay entregables asignados para esta área.")
 else:
     for _, r in ent_area.iterrows():
-        st.markdown(f"<div class='card'><strong>{r.get('Categoría','')}</strong><br>{r.get('Entregable','')}<br>"
-                    f"<span class='small'>Estado: {r.get('Estado','')}</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='card'><strong>{r.get('Categoría','')}</strong><br>{r.get('Entregable','')}<br><span class='small'>Estado: {r.get('Estado','')}</span></div>", unsafe_allow_html=True)
 
-# ---------------------------
-# Inputs para nuevo entregable
-# ---------------------------
+# Inputs nuevo entregable
 st.markdown("### Registrar / Analizar un entregable")
 col_a, col_b = st.columns([2,1])
 with col_a:
@@ -165,7 +163,7 @@ with col_b:
     responsable = st.text_input("Responsable (si aplica)", value=info.get("Dueño del Proceso",""))
 
 # ---------------------------
-# IA: Generar resumen
+# Función IA
 # ---------------------------
 def make_prompt(area, info, clausulas_records, entregables_records, descripcion, prioridad):
     prompt = f"""
@@ -211,9 +209,7 @@ if st.button("🤖 Generar resumen IA"):
         except Exception as e:
             st.error(f"Error en llamada a OpenAI: {e}")
 
-# ---------------------------
-# Guardar nuevo entregable en Sheets
-# ---------------------------
+# Guardar entregable
 if st.button("💾 Guardar entregable en Sheets"):
     if not nuevo_entregable:
         st.warning("Agrega texto en 'Entregable / Tarea' para guardar.")
@@ -271,13 +267,5 @@ if st.button("📥 Generar y descargar PDF"):
     pdf_buf = build_pdf_bytes(area, info, nuevo_entregable, nota_descr, resumen_ia or "")
     st.download_button("Descargar Reporte PDF", data=pdf_buf, file_name=f"Reporte_ISO_{area}.pdf", mime="application/pdf")
 
-# ---------------------------
 # Footer visual
-# ---------------------------
-footer_img = load_image_try("assets/Pie.png") or load_image_try("Pie.png")
-if footer_img:
-    st.image(footer_img, width=800, height=80)
-else:
-    st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#777;'>"
-                "Formulario automatizado · Mantenimiento ISO · Generado con IA</div>",
-                unsafe_allow_html=True)
+display_footer()
