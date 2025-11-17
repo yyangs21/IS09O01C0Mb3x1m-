@@ -210,18 +210,21 @@ if st.button("🤖 Consultar IA"):
         clausulas_records = cl_area.to_dict("records")
         entregables_records = {"entregable": nuevo_entregable, "descripcion": nota_descr}
         prompt = make_prompt(area, info, clausulas_records, entregables_records, nota_descr, prioridad)
-        try:
-           resp = client.chat.completions.create(
-                model="gpt-4o-mini",   # modelo disponible en tu plan
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,
-                max_tokens=700
-            )
+try:
+    client = openai
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+        max_tokens=700
+    )
+    resumen_ia = resp.choices[0].message.content.strip()
+    st.markdown(f"<div class='card'>{resumen_ia}</div>", unsafe_allow_html=True)
+except Exception as e:
+    st.error(f"Error en llamada a OpenAI: {e}")
 
-            resumen_ia = resp.choices[0].message.content.strip()
-            st.markdown(f"<div class='card'>{resumen_ia}</div>", unsafe_allow_html=True)
-        except Exception as e:
-            st.error(f"Error en llamada a OpenAI: {e}")
+
+
 
 # ---------------------------
 # SUBIR ENTREGABLE A SHEET + DRIVE
