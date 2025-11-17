@@ -158,7 +158,7 @@ if cl_area.empty:
     st.info("No hay cláusulas registradas para esta área.")
 else:
     for _, r in cl_area.iterrows():
-        st.markdown(f"<span class='chip'>{r.get('Clausula','')} — {r.get('Descripción','')}</span>", unsafe_allow_html=True)
+        st.markdown(f"<span class='chip'>{r.get('Clausula','')} — {r.get('Descripcion','')}</span>", unsafe_allow_html=True)
 
 # ---------------------------
 # ENTREGABLES ASIGNADOS
