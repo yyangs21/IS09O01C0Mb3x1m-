@@ -36,9 +36,15 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-def load_image_try(path):
+def load_image_try(path, width=None, height=None):
     try:
-        return Image.open(path)
+        img = Image.open(path)
+        if width and height:
+            img = img.resize((width, height))
+        elif width:
+            ratio = width / img.width
+            img = img.resize((width, int(img.height * ratio)))
+        return img
     except Exception:
         return None
 
@@ -120,9 +126,9 @@ df_areas.rename(columns=col_mapping, inplace=True)
 # ---------------------------
 # HEADER
 # ---------------------------
-header_img = load_image_try("assets/Encabezado.png") or load_image_try("Encabezado.png")
+header_img = load_image_try("assets/Encabezado.png", width=800, height=120) or load_image_try("Encabezado.png", width=800, height=120)
 if header_img:
-    st.image(header_img, width=800, height=120)
+    st.image(header_img)
 else:
     st.markdown("<div class='header'><h2>📄 Formulario ISO 9001 — Inteligente</h2></div>", unsafe_allow_html=True)
 
@@ -139,7 +145,7 @@ with right:
         df_areas, df_claus, df_ent = load_sheets()
         st.experimental_rerun()
 
-info = df_areas[df_areas["Area"] == area].iloc[0]
+info = df_areas[df_areas["Area"].str.strip().str.lower() == area.strip().lower()].iloc[0]
 st.markdown(f"<div class='card'><strong>{area}</strong><br><span class='small'>Dueño: {info['Dueño del Proceso']} | Puesto: {info['Puesto']} | {info.get('Correo','')}</span></div>", unsafe_allow_html=True)
 
 # ---------------------------
@@ -231,10 +237,10 @@ if st.button("💾 Guardar entregable"):
     if not nuevo_entregable:
         st.warning("Agrega texto en 'Entregable / Tarea'.")
     else:
-        # Subir archivo a Drive
         file_url = ""
         if archivo:
             try:
+                archivo.seek(0)
                 file_metadata = {"name": archivo.name, "parents": [DRIVE_FOLDER_ID]}
                 media = MediaIoBaseUpload(archivo, mimetype=archivo.type, resumable=True)
                 file_drive = drive_service.files().create(body=file_metadata, media_body=media, fields="id, webViewLink").execute()
@@ -242,7 +248,6 @@ if st.button("💾 Guardar entregable"):
             except Exception as e:
                 st.error(f"Error subiendo archivo a Drive: {e}")
 
-        # Guardar fila en Sheet
         row = [area, nueva_categoria, nuevo_entregable, str(fecha_compromiso), prioridad, responsable, "Pendiente", nota_descr, file_url]
         try:
             sh.worksheet("Entregables").append_row(row)
@@ -295,9 +300,9 @@ if st.button("📥 Generar y descargar PDF"):
 # ---------------------------
 # FOOTER
 # ---------------------------
-footer_img = load_image_try("assets/Pie.png") or load_image_try("Pie.png")
+footer_img = load_image_try("assets/Pie.png", width=800, height=80) or load_image_try("Pie.png", width=800, height=80)
 if footer_img:
-    st.image(footer_img, width=800, height=80)
+    st.image(footer_img)
 else:
     st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#777;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
 
