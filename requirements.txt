@@ -2,7 +2,11 @@ streamlit
 pandas
 gspread
 oauth2client
-openai
-reportlab
 python-dotenv
+openai
 Pillow
+reportlab
+google-api-python-client
+google-auth
+google-auth-httplib2
+google-auth-oauthlib
