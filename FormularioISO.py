@@ -53,7 +53,10 @@ def get_gspread_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     if "SERVICE_ACCOUNT_JSON" in st.secrets:
         sa_info = st.secrets["SERVICE_ACCOUNT_JSON"]
-        sa_json = json.loads(sa_info) if isinstance(sa_info, str) else sa_info
+        if isinstance(sa_info, str):
+            sa_json = json.loads(sa_info)
+        else:
+            sa_json = sa_info
         creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_json, scope)
         return gspread.authorize(creds)
     elif os.path.exists("service_account.json"):
@@ -67,7 +70,10 @@ def get_drive_service():
     scope = ["https://www.googleapis.com/auth/drive"]
     if "SERVICE_ACCOUNT_JSON" in st.secrets:
         sa_info = st.secrets["SERVICE_ACCOUNT_JSON"]
-        sa_json = json.loads(sa_info) if isinstance(sa_info, str) else sa_info
+        if isinstance(sa_info, str):
+            sa_json = json.loads(sa_info)
+        else:
+            sa_json = sa_info
         creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_json, scope)
         return build('drive', 'v3', credentials=creds)
     elif os.path.exists("service_account.json"):
@@ -82,7 +88,11 @@ def get_drive_service():
 # ---------------------------
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1mQY0_MEjluVT95iat5_5qGyffBJGp2n0hwEChvp2Ivs"
 gc = get_gspread_client()
-sh = gc.open_by_url(SHEET_URL)
+try:
+    sh = gc.open_by_url(SHEET_URL)
+except gspread.exceptions.APIError as e:
+    st.error(f"Error accediendo al Sheet: {e}")
+    st.stop()
 
 def load_sheets():
     df_areas = pd.DataFrame(sh.worksheet("Areas").get_all_records())
@@ -115,7 +125,7 @@ df_areas.rename(columns=col_mapping, inplace=True)
 # HEADER
 # ---------------------------
 header_img = load_image_try("assets/Encabezado.png") or load_image_try("Encabezado.png")
-if header_img:
+if isinstance(header_img, Image.Image):
     st.image(header_img, width=800, use_column_width=False)
 else:
     st.markdown("<div class='header'><h2>📄 Formulario ISO 9001 — Inteligente</h2></div>", unsafe_allow_html=True)
@@ -202,15 +212,15 @@ if st.button("🤖 Consultar IA"):
     else:
         clausulas_records = cl_area.to_dict("records")
         entregables_records = {"entregable": nuevo_entregable, "descripcion": nota_descr}
-        prompt = make_prompt(area, info, clausulas_records, entregables_records, nota_descr, prioridad)
+        prompt_text = make_prompt(area, info, clausulas_records, entregables_records, nota_descr, prioridad)
         try:
-            resp = openai.chat.completions.create(
+            resp = openai.ChatCompletion.create(
                 model="gpt-4o-mini",
-                messages=[{"role":"user","content": prompt}],
+                messages=[{"role":"user","content": prompt_text}],
                 temperature=0.2,
                 max_tokens=700
             )
-            resumen_ia = resp.choices[0].message.content
+            resumen_ia = resp.choices[0].message.content.strip()
             st.markdown(f"<div class='card'>{resumen_ia}</div>", unsafe_allow_html=True)
         except openai.error.OpenAIError as e:
             st.error(f"Error al consultar OpenAI: {e}")
@@ -218,7 +228,7 @@ if st.button("🤖 Consultar IA"):
 # ---------------------------
 # SUBIR ENTREGABLE A SHEET + DRIVE
 # ---------------------------
-DRIVE_FOLDER_ID = "1ueBPvyVPoSkz0VoLXIkulnwLw3WYX"
+DRIVE_FOLDER_ID = "1ueBPvyVPoSkz0VoLXIkulnwLw3am3WYX"
 drive_service = get_drive_service()
 
 if st.button("💾 Guardar entregable"):
@@ -229,6 +239,7 @@ if st.button("💾 Guardar entregable"):
         file_url = ""
         if archivo:
             try:
+                archivo.seek(0)
                 file_metadata = {"name": archivo.name, "parents": [DRIVE_FOLDER_ID]}
                 media = MediaIoBaseUpload(archivo, mimetype=archivo.type, resumable=True)
                 file_drive = drive_service.files().create(body=file_metadata, media_body=media, fields="id, webViewLink").execute()
@@ -290,10 +301,9 @@ if st.button("📥 Generar y descargar PDF"):
 # FOOTER
 # ---------------------------
 footer_img = load_image_try("assets/Pie.png") or load_image_try("Pie.png")
-if footer_img:
-    st.image(footer_img, width=800, height=80)
+if isinstance(footer_img, Image.Image):
+    st.image(footer_img, width=800, use_column_width=False)
 else:
     st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#777;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
-
 
 
