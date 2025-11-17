@@ -172,8 +172,10 @@ with col_b:
     responsable = st.text_input("Responsable", value=info.get("Dueño del Proceso",""))
 
 # ---------------------------
-# FUNCIÓN IA
 # ---------------------------
+# FUNCIÓN IA - versión OpenAI >=1.0.0
+# ---------------------------
+
 def make_prompt(area, info, clausulas_records, entregables_records, descripcion, prioridad):
     prompt = f"""
 Eres un experto en Sistemas de Gestión de Calidad ISO 9001.
@@ -198,18 +200,23 @@ if st.button("🤖 Consultar IA"):
     if not OPENAI_KEY:
         st.error("No se detectó clave de OpenAI.")
     else:
+        clausulas_records = cl_area.to_dict("records")
+        entregables_records = {"entregable": nuevo_entregable, "descripcion": nota_descr}
+        prompt = make_prompt(area, info, clausulas_records, entregables_records, nota_descr, prioridad)
         try:
-            clausulas_records = cl_area.to_dict("records")
-            entregables_records = {"entregable": nuevo_entregable, "descripcion": nota_descr}
-            prompt = make_prompt(area, info, clausulas_records, entregables_records, nota_descr, prioridad)
-            resp = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role":"user","content": prompt}],
+            resp = openai.chat.completions.create(
+                model="gpt-3.5-turbo",  # usa tu modelo disponible
+                messages=[{"role": "user", "content": prompt}],
                 temperature=0.2,
                 max_tokens=700
             )
-            resumen_ia = resp.choices[0].message["content"].strip()
+            # Ahora accedemos al contenido con .message.content
+            resumen_ia = resp.choices[0].message.content
             st.markdown(f"<div class='card'>{resumen_ia}</div>", unsafe_allow_html=True)
+        except openai.error.RateLimitError:
+            st.error("Se excedió la cuota de OpenAI. Intenta más tarde.")
+        except openai.error.AuthenticationError:
+            st.error("Error de autenticación con OpenAI. Revisa tu API Key.")
         except Exception as e:
             st.error(f"Error al consultar IA: {e}")
 
