@@ -8,7 +8,6 @@ import io
 import os
 from dotenv import load_dotenv
 import openai
-from openai import OpenAI
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import letter
@@ -23,16 +22,19 @@ load_dotenv()
 st.set_page_config(page_title="Formulario ISO 9001 — Inteligente", layout="wide", page_icon="📄")
 
 # CSS / Diseño visual
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-html, body, [class*="css"]  { font-family: 'Inter', sans-serif; }
-.header { border-radius:12px; padding:14px; background: linear-gradient(90deg,#f7fbff, #ffffff); box-shadow: 0 6px 20px rgba(13,38,66,0.06); text-align:center;}
-.card { background:#fff; padding:12px; border-radius:10px; box-shadow:0 6px 18px rgba(12,40,80,0.04); margin-bottom:10px; }
-.chip { display:inline-block; padding:6px 10px; margin:4px; border-radius:18px; background:#f1f7ff; border:1px solid #e1efff; font-size:14px; }
-.small{ font-size:13px; color:#666; }
-</style>
-""", unsafe_allow_html=True)
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    html, body, [class*="css"]  { font-family: 'Inter', sans-serif; }
+    .header { border-radius:12px; padding:14px; background: linear-gradient(90deg,#f7fbff, #ffffff); box-shadow: 0 6px 20px rgba(13,38,66,0.06); text-align:center;}
+    .card { background:#fff; padding:12px; border-radius:10px; box-shadow:0 6px 18px rgba(12,40,80,0.04); margin-bottom:10px; }
+    .chip { display:inline-block; padding:6px 10px; margin:4px; border-radius:18px; background:#f1f7ff; border:1px solid #e1efff; font-size:14px; }
+    .small{ font-size:13px; color:#666; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 def load_image_try(path):
     try:
@@ -41,55 +43,46 @@ def load_image_try(path):
         return None
 
 # ---------------------------
-# CREDENCIALES
+# CARGAR CREDENCIALES
 # ---------------------------
 OPENAI_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_KEY) if OPENAI_KEY else None
+if OPENAI_KEY:
+    openai.api_key = OPENAI_KEY
 
 def get_gspread_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = None
     if "SERVICE_ACCOUNT_JSON" in st.secrets:
         sa_info = st.secrets["SERVICE_ACCOUNT_JSON"]
-        if isinstance(sa_info, str):
-            sa_json = json.loads(sa_info)
-        else:
-            sa_json = sa_info
+        sa_json = json.loads(sa_info) if isinstance(sa_info, str) else sa_info
         creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_json, scope)
-        return gspread.authorize(creds)
     elif os.path.exists("service_account.json"):
         creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
-        return gspread.authorize(creds)
     else:
         st.error("No se encontró credencial de Google Sheets.")
         st.stop()
+    return gspread.authorize(creds)
 
 def get_drive_service():
     scope = ["https://www.googleapis.com/auth/drive"]
+    creds = None
     if "SERVICE_ACCOUNT_JSON" in st.secrets:
         sa_info = st.secrets["SERVICE_ACCOUNT_JSON"]
-        if isinstance(sa_info, str):
-            sa_json = json.loads(sa_info)
-        else:
-            sa_json = sa_info
+        sa_json = json.loads(sa_info) if isinstance(sa_info, str) else sa_info
         creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_json, scope)
-        return build('drive', 'v3', credentials=creds)
     elif os.path.exists("service_account.json"):
         creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
-        return build('drive', 'v3', credentials=creds)
     else:
         st.error("No se encontró credencial de Google Drive.")
         st.stop()
+    return build('drive', 'v3', credentials=creds)
 
 # ---------------------------
 # LEER SHEETS
 # ---------------------------
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1mQY0_MEjluVT95iat5_5qGyffBJGp2n0hwEChvp2Ivs"
 gc = get_gspread_client()
-try:
-    sh = gc.open_by_url(SHEET_URL)
-except Exception as e:
-    st.error(f"Error abriendo Google Sheet: {e}")
-    st.stop()
+sh = gc.open_by_url(SHEET_URL)
 
 def load_sheets():
     df_areas = pd.DataFrame(sh.worksheet("Areas").get_all_records())
@@ -111,11 +104,7 @@ if not set(required_cols_norm).issubset(actual_cols_norm):
     st.stop()
 
 # Renombrar columnas
-col_mapping = {}
-for req_col in required_areas_cols:
-    for actual_col in df_areas.columns:
-        if req_col.strip().lower() == actual_col.strip().lower():
-            col_mapping[actual_col] = req_col
+col_mapping = {actual_col: req_col for req_col in required_areas_cols for actual_col in df_areas.columns if req_col.strip().lower() == actual_col.strip().lower()}
 df_areas.rename(columns=col_mapping, inplace=True)
 
 # ---------------------------
@@ -123,7 +112,10 @@ df_areas.rename(columns=col_mapping, inplace=True)
 # ---------------------------
 header_img = load_image_try("assets/Encabezado.png") or load_image_try("Encabezado.png")
 if header_img:
-    st.image(header_img, width=800)
+    try:
+        st.image(header_img, width=800, output_format="PNG")
+    except:
+        st.markdown("<div class='header'><h2>📄 Formulario ISO 9001 — Inteligente</h2></div>", unsafe_allow_html=True)
 else:
     st.markdown("<div class='header'><h2>📄 Formulario ISO 9001 — Inteligente</h2></div>", unsafe_allow_html=True)
 
@@ -210,26 +202,22 @@ if st.button("🤖 Consultar IA"):
         clausulas_records = cl_area.to_dict("records")
         entregables_records = {"entregable": nuevo_entregable, "descripcion": nota_descr}
         prompt = make_prompt(area, info, clausulas_records, entregables_records, nota_descr, prioridad)
-try:
-    client = openai
-    resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2,
-        max_tokens=700
-    )
-    resumen_ia = resp.choices[0].message.content.strip()
-    st.markdown(f"<div class='card'>{resumen_ia}</div>", unsafe_allow_html=True)
-except Exception as e:
-    st.error(f"Error en llamada a OpenAI: {e}")
-
-
-
+        try:
+            resp = openai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role":"user","content": prompt}],
+                temperature=0.2,
+                max_tokens=700
+            )
+            resumen_ia = resp.choices[0].message.content.strip()
+            st.markdown(f"<div class='card'>{resumen_ia}</div>", unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"Error en llamada a OpenAI: {e}")
 
 # ---------------------------
 # SUBIR ENTREGABLE A SHEET + DRIVE
 # ---------------------------
-DRIVE_FOLDER_ID = "1ueBPvyVPoSkz0VoLXIkulnwLw3am3WYX"
+DRIVE_FOLDER_ID = "1ueBPvyVPoSkz0VoLXIkulnwLw3YX"
 drive_service = get_drive_service()
 
 if st.button("💾 Guardar entregable"):
@@ -300,8 +288,12 @@ if st.button("📥 Generar y descargar PDF"):
 # ---------------------------
 footer_img = load_image_try("assets/Pie.png") or load_image_try("Pie.png")
 if footer_img:
-    st.image(footer_img, width=800)
+    try:
+        st.image(footer_img, width=800, output_format="PNG")
+    except:
+        st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#777;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
 else:
     st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#777;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
+
 
 
