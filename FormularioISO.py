@@ -175,6 +175,7 @@ with col_b:
 # ---------------------------
 # ---------------------------
 # # ---------------------------
+# ---------------------------
 # FUNCIÓN IA
 # ---------------------------
 resumen_ia = None
@@ -206,7 +207,7 @@ if st.button("🤖 Consultar IA"):
         entregables_records = {"entregable": nuevo_entregable, "descripcion": nota_descr}
         prompt = make_prompt(area, info, clausulas_records, entregables_records, nota_descr, prioridad)
         try:
-            resp = openai.ChatCompletion.create(
+            resp = openai.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role":"user","content": prompt}],
                 temperature=0.2,
@@ -214,10 +215,11 @@ if st.button("🤖 Consultar IA"):
             )
             resumen_ia = resp.choices[0].message['content'].strip()
             st.markdown(f"<div class='card'>{resumen_ia}</div>", unsafe_allow_html=True)
-        except openai.error.OpenAIError as e:
+        except openai.OpenAIError as e:
             st.error(f"Error al consultar OpenAI: {e}")
         except Exception as e:
             st.error(f"Ocurrió un error inesperado al consultar la IA: {e}")
+
 
 
 
