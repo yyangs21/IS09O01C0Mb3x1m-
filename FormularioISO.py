@@ -173,8 +173,11 @@ with col_b:
     responsable = st.text_input("Responsable", value=info.get("Dueño del Proceso",""))
 
 # ---------------------------
+# ---------------------------
 # FUNCIÓN IA
 # ---------------------------
+resumen_ia = None
+
 def make_prompt(area, info, clausulas_records, entregables_records, descripcion, prioridad):
     prompt = f"""
 Eres un experto en Sistemas de Gestión de Calidad ISO 9001.
@@ -194,25 +197,29 @@ Entrega:
 """
     return prompt
 
-resumen_ia = None
 if st.button("🤖 Consultar IA"):
     if not OPENAI_KEY:
-        st.error("No se detectó clave de OpenAI.")
+        st.error("No se detectó clave de OpenAI. Verifica tus secrets o variable de entorno.")
     else:
         clausulas_records = cl_area.to_dict("records")
         entregables_records = {"entregable": nuevo_entregable, "descripcion": nota_descr}
         prompt = make_prompt(area, info, clausulas_records, entregables_records, nota_descr, prioridad)
         try:
-            resp = openai.chat.completions.create(
-                model="gpt-4o-mini",
+            resp = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",  # Modelo disponible en plan gratuito
                 messages=[{"role":"user","content": prompt}],
                 temperature=0.2,
                 max_tokens=700
             )
-            resumen_ia = resp.choices[0].message.content.strip()
+            resumen_ia = resp.choices[0].message['content'].strip()
             st.markdown(f"<div class='card'>{resumen_ia}</div>", unsafe_allow_html=True)
+        except openai.error.RateLimitError:
+            st.error("Se ha alcanzado el límite de peticiones de tu plan gratuito. Intenta más tarde.")
+        except openai.error.InvalidRequestError as e:
+            st.error(f"Error en la solicitud: {e}")
         except Exception as e:
-            st.error(f"Error en llamada a OpenAI: {e}")
+            st.error(f"Ocurrió un error inesperado al consultar la IA: {e}")
+
 
 # ---------------------------
 # SUBIR ENTREGABLE A SHEET + DRIVE
