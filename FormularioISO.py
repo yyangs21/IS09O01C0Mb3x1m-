@@ -53,10 +53,7 @@ def get_gspread_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     if "SERVICE_ACCOUNT_JSON" in st.secrets:
         sa_info = st.secrets["SERVICE_ACCOUNT_JSON"]
-        if isinstance(sa_info, str):
-            sa_json = json.loads(sa_info)
-        else:
-            sa_json = sa_info
+        sa_json = json.loads(sa_info) if isinstance(sa_info, str) else sa_info
         creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_json, scope)
         return gspread.authorize(creds)
     elif os.path.exists("service_account.json"):
@@ -70,10 +67,7 @@ def get_drive_service():
     scope = ["https://www.googleapis.com/auth/drive"]
     if "SERVICE_ACCOUNT_JSON" in st.secrets:
         sa_info = st.secrets["SERVICE_ACCOUNT_JSON"]
-        if isinstance(sa_info, str):
-            sa_json = json.loads(sa_info)
-        else:
-            sa_json = sa_info
+        sa_json = json.loads(sa_info) if isinstance(sa_info, str) else sa_info
         creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_json, scope)
         return build('drive', 'v3', credentials=creds)
     elif os.path.exists("service_account.json"):
@@ -88,11 +82,7 @@ def get_drive_service():
 # ---------------------------
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1mQY0_MEjluVT95iat5_5qGyffBJGp2n0hwEChvp2Ivs"
 gc = get_gspread_client()
-try:
-    sh = gc.open_by_url(SHEET_URL)
-except gspread.exceptions.APIError as e:
-    st.error(f"Error accediendo al Sheet: {e}")
-    st.stop()
+sh = gc.open_by_url(SHEET_URL)
 
 def load_sheets():
     df_areas = pd.DataFrame(sh.worksheet("Areas").get_all_records())
@@ -125,12 +115,13 @@ df_areas.rename(columns=col_mapping, inplace=True)
 # HEADER
 # ---------------------------
 header_img = load_image_try("assets/Encabezado.png") or load_image_try("Encabezado.png")
-if isinstance(header_img, Image.Image):
-    st.image(header_img, width=800, use_column_width=False)
+if header_img:
+    try:
+        st.image(header_img, width=800, use_column_width=False)
+    except:
+        st.markdown("<div class='header'><h2>📄 Formulario ISO 9001 — Inteligente</h2></div>", unsafe_allow_html=True)
 else:
     st.markdown("<div class='header'><h2>📄 Formulario ISO 9001 — Inteligente</h2></div>", unsafe_allow_html=True)
-
-st.write("")
 
 # ---------------------------
 # SELECTOR DE AREA
@@ -143,7 +134,7 @@ with right:
         df_areas, df_claus, df_ent = load_sheets()
         st.experimental_rerun()
 
-info = df_areas[df_areas["Area"] == area].iloc[0]
+info = df_areas[df_areas["Area"].str.strip().str.lower() == area.strip().lower()].iloc[0]
 st.markdown(f"<div class='card'><strong>{area}</strong><br><span class='small'>Dueño: {info['Dueño del Proceso']} | Puesto: {info['Puesto']} | {info.get('Correo','')}</span></div>", unsafe_allow_html=True)
 
 # ---------------------------
@@ -214,7 +205,7 @@ if st.button("🤖 Consultar IA"):
         entregables_records = {"entregable": nuevo_entregable, "descripcion": nota_descr}
         prompt_text = make_prompt(area, info, clausulas_records, entregables_records, nota_descr, prioridad)
         try:
-            resp = openai.ChatCompletion.create(
+            resp = openai.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role":"user","content": prompt_text}],
                 temperature=0.2,
@@ -222,8 +213,12 @@ if st.button("🤖 Consultar IA"):
             )
             resumen_ia = resp.choices[0].message.content.strip()
             st.markdown(f"<div class='card'>{resumen_ia}</div>", unsafe_allow_html=True)
+        except openai.error.RateLimitError:
+            st.error("Límite de consultas alcanzado. Verifica tu crédito o espera antes de usar la IA.")
         except openai.error.OpenAIError as e:
-            st.error(f"Error al consultar OpenAI: {e}")
+            st.error(f"Error en la llamada a OpenAI: {e}")
+        except Exception as e:
+            st.error(f"Ocurrió un error inesperado al consultar la IA: {e}")
 
 # ---------------------------
 # SUBIR ENTREGABLE A SHEET + DRIVE
@@ -235,11 +230,9 @@ if st.button("💾 Guardar entregable"):
     if not nuevo_entregable:
         st.warning("Agrega texto en 'Entregable / Tarea'.")
     else:
-        # Subir archivo a Drive
         file_url = ""
         if archivo:
             try:
-                archivo.seek(0)
                 file_metadata = {"name": archivo.name, "parents": [DRIVE_FOLDER_ID]}
                 media = MediaIoBaseUpload(archivo, mimetype=archivo.type, resumable=True)
                 file_drive = drive_service.files().create(body=file_metadata, media_body=media, fields="id, webViewLink").execute()
@@ -247,7 +240,6 @@ if st.button("💾 Guardar entregable"):
             except Exception as e:
                 st.error(f"Error subiendo archivo a Drive: {e}")
 
-        # Guardar fila en Sheet
         row = [area, nueva_categoria, nuevo_entregable, str(fecha_compromiso), prioridad, responsable, "Pendiente", nota_descr, file_url]
         try:
             sh.worksheet("Entregables").append_row(row)
@@ -301,9 +293,13 @@ if st.button("📥 Generar y descargar PDF"):
 # FOOTER
 # ---------------------------
 footer_img = load_image_try("assets/Pie.png") or load_image_try("Pie.png")
-if isinstance(footer_img, Image.Image):
-    st.image(footer_img, width=800, use_column_width=False)
+if footer_img:
+    try:
+        st.image(footer_img, width=800, use_column_width=False)
+    except:
+        st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#777;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
 else:
     st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#777;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
+
 
 
