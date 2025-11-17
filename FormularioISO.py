@@ -21,21 +21,74 @@ from googleapiclient.http import MediaIoBaseUpload
 load_dotenv()
 st.set_page_config(page_title="Formulario ISO 9001 — Inteligente", layout="wide", page_icon="📄")
 
-# CSS / Diseño visual
+# ---------------------------
+# CSS / DISEÑO VISUAL ELEGANTE
+# ---------------------------
 st.markdown(
     """
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-    html, body, [class*="css"]  { font-family: 'Inter', sans-serif; }
-    .header { border-radius:12px; padding:14px; background: linear-gradient(90deg,#f7fbff, #ffffff); box-shadow: 0 6px 20px rgba(13,38,66,0.06); text-align:center;}
-    .card { background:#fff; padding:12px; border-radius:10px; box-shadow:0 6px 18px rgba(12,40,80,0.04); margin-bottom:10px; }
-    .chip { display:inline-block; padding:6px 10px; margin:4px; border-radius:18px; background:#f1f7ff; border:1px solid #e1efff; font-size:14px; }
-    .small{ font-size:13px; color:#666; }
+    
+    html, body, [class*="css"]  { 
+        font-family: 'Inter', sans-serif; 
+        color: #1a3d7c;  /* Azul elegante */
+    }
+    .header { 
+        border-radius:12px; 
+        padding:14px; 
+        background: linear-gradient(90deg,#e6f0ff, #ffffff); 
+        box-shadow: 0 6px 20px rgba(13,38,66,0.06); 
+        text-align:center;
+        color: #1a3d7c;
+        font-weight:600;
+    }
+    .card { 
+        background:#f0f5ff; 
+        padding:14px; 
+        border-radius:10px; 
+        box-shadow:0 6px 18px rgba(12,40,80,0.04); 
+        margin-bottom:10px; 
+        color:#1a3d7c;
+    }
+    .chip { 
+        display:inline-block; 
+        padding:6px 12px; 
+        margin:4px; 
+        border-radius:18px; 
+        background:#d9e4ff; 
+        border:1px solid #aac4ff; 
+        font-size:14px; 
+        color:#1a3d7c;
+    }
+    .small{ 
+        font-size:13px; 
+        color:#1a3d7c;
+    }
+    .stTextInput>div>div>input,
+    .stTextArea>div>div>textarea,
+    .stSelectbox>div>div>div>select,
+    .stDateInput>div>div>input {
+        color:#1a3d7c;
+        font-weight:500;
+    }
+    .stButton>button {
+        background-color:#aac4ff;
+        color:#1a3d7c;
+        font-weight:600;
+        border-radius:8px;
+    }
+    .stButton>button:hover {
+        background-color:#7fa8ff;
+        color:white;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+# ---------------------------
+# FUNCIONES AUXILIARES
+# ---------------------------
 def load_image_try(path):
     try:
         return Image.open(path)
@@ -53,7 +106,10 @@ def get_gspread_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     if "SERVICE_ACCOUNT_JSON" in st.secrets:
         sa_info = st.secrets["SERVICE_ACCOUNT_JSON"]
-        sa_json = json.loads(sa_info) if isinstance(sa_info, str) else sa_info
+        if isinstance(sa_info, str):
+            sa_json = json.loads(sa_info)
+        else:
+            sa_json = sa_info
         creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_json, scope)
         return gspread.authorize(creds)
     elif os.path.exists("service_account.json"):
@@ -67,7 +123,10 @@ def get_drive_service():
     scope = ["https://www.googleapis.com/auth/drive"]
     if "SERVICE_ACCOUNT_JSON" in st.secrets:
         sa_info = st.secrets["SERVICE_ACCOUNT_JSON"]
-        sa_json = json.loads(sa_info) if isinstance(sa_info, str) else sa_info
+        if isinstance(sa_info, str):
+            sa_json = json.loads(sa_info)
+        else:
+            sa_json = sa_info
         creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_json, scope)
         return build('drive', 'v3', credentials=creds)
     elif os.path.exists("service_account.json"):
@@ -78,7 +137,7 @@ def get_drive_service():
         st.stop()
 
 # ---------------------------
-# LEER SHEETS
+# CARGAR SHEETS
 # ---------------------------
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1mQY0_MEjluVT95iat5_5qGyffBJGp2n0hwEChvp2Ivs"
 gc = get_gspread_client()
@@ -103,12 +162,7 @@ if not set(required_cols_norm).issubset(actual_cols_norm):
     st.error(f"La hoja 'Areas' debe contener columnas: {required_areas_cols}. Revisa nombres exactos.")
     st.stop()
 
-# Renombrar columnas
-col_mapping = {}
-for req_col in required_areas_cols:
-    for actual_col in df_areas.columns:
-        if req_col.strip().lower() == actual_col.strip().lower():
-            col_mapping[actual_col] = req_col
+col_mapping = {actual_col:req_col for req_col in required_areas_cols for actual_col in df_areas.columns if req_col.strip().lower()==actual_col.strip().lower()}
 df_areas.rename(columns=col_mapping, inplace=True)
 
 # ---------------------------
@@ -116,12 +170,11 @@ df_areas.rename(columns=col_mapping, inplace=True)
 # ---------------------------
 header_img = load_image_try("assets/Encabezado.png") or load_image_try("Encabezado.png")
 if header_img:
-    try:
-        st.image(header_img, width=800, use_column_width=False)
-    except:
-        st.markdown("<div class='header'><h2>📄 Formulario ISO 9001 — Inteligente</h2></div>", unsafe_allow_html=True)
+    st.image(header_img, width=800, height=120)
 else:
     st.markdown("<div class='header'><h2>📄 Formulario ISO 9001 — Inteligente</h2></div>", unsafe_allow_html=True)
+
+st.write("")
 
 # ---------------------------
 # SELECTOR DE AREA
@@ -134,7 +187,7 @@ with right:
         df_areas, df_claus, df_ent = load_sheets()
         st.experimental_rerun()
 
-info = df_areas[df_areas["Area"].str.strip().str.lower() == area.strip().lower()].iloc[0]
+info = df_areas[df_areas["Area"]==area].iloc[0]
 st.markdown(f"<div class='card'><strong>{area}</strong><br><span class='small'>Dueño: {info['Dueño del Proceso']} | Puesto: {info['Puesto']} | {info.get('Correo','')}</span></div>", unsafe_allow_html=True)
 
 # ---------------------------
@@ -165,9 +218,9 @@ else:
 st.markdown("### Registrar / Analizar un entregable")
 col_a, col_b = st.columns([2,1])
 with col_a:
-    nueva_categoria = st.text_input("Categoría", value="")
-    nuevo_entregable = st.text_input("Entregable / Tarea", value="")
-    nota_descr = st.text_area("Descripción / Comentarios", value="", height=120)
+    nueva_categoria = st.text_input("Categoría", value="", placeholder="Ej: Informe de Calidad")
+    nuevo_entregable = st.text_input("Entregable / Tarea", value="", placeholder="Escribe el entregable que vas a registrar")
+    nota_descr = st.text_area("Descripción / Comentarios", value="", height=120, placeholder="Comentarios o notas relevantes")
     archivo = st.file_uploader("Subir archivo entregable (PDF/Word/Excel)", type=["pdf","docx","xlsx"])
 with col_b:
     prioridad = st.selectbox("Prioridad", ["Baja","Media","Alta"])
@@ -201,35 +254,32 @@ if st.button("🤖 Consultar IA"):
     if not OPENAI_KEY:
         st.error("No se detectó clave de OpenAI.")
     else:
-        clausulas_records = cl_area.to_dict("records")
-        entregables_records = {"entregable": nuevo_entregable, "descripcion": nota_descr}
-        prompt_text = make_prompt(area, info, clausulas_records, entregables_records, nota_descr, prioridad)
         try:
-            resp = openai.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role":"user","content": prompt_text}],
+            clausulas_records = cl_area.to_dict("records")
+            entregables_records = {"entregable": nuevo_entregable, "descripcion": nota_descr}
+            prompt = make_prompt(area, info, clausulas_records, entregables_records, nota_descr, prioridad)
+            resp = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role":"user","content": prompt}],
                 temperature=0.2,
                 max_tokens=700
             )
             resumen_ia = resp.choices[0].message.content.strip()
             st.markdown(f"<div class='card'>{resumen_ia}</div>", unsafe_allow_html=True)
-        except openai.error.RateLimitError:
-            st.error("Límite de consultas alcanzado. Verifica tu crédito o espera antes de usar la IA.")
-        except openai.error.OpenAIError as e:
-            st.error(f"Error en la llamada a OpenAI: {e}")
         except Exception as e:
-            st.error(f"Ocurrió un error inesperado al consultar la IA: {e}")
+            st.error(f"Error al consultar OpenAI: {e}")
 
 # ---------------------------
 # SUBIR ENTREGABLE A SHEET + DRIVE
 # ---------------------------
-DRIVE_FOLDER_ID = "1ueBPvyVPoSkz0VoLXIkulnwLw3am3WYX"
+DRIVE_FOLDER_ID = "1ueBPvyVPoSkz0VoLXIkulnwLw3YX"
 drive_service = get_drive_service()
 
 if st.button("💾 Guardar entregable"):
     if not nuevo_entregable:
         st.warning("Agrega texto en 'Entregable / Tarea'.")
     else:
+        # Subir archivo a Drive
         file_url = ""
         if archivo:
             try:
@@ -240,6 +290,7 @@ if st.button("💾 Guardar entregable"):
             except Exception as e:
                 st.error(f"Error subiendo archivo a Drive: {e}")
 
+        # Guardar fila en Sheet
         row = [area, nueva_categoria, nuevo_entregable, str(fecha_compromiso), prioridad, responsable, "Pendiente", nota_descr, file_url]
         try:
             sh.worksheet("Entregables").append_row(row)
@@ -294,12 +345,8 @@ if st.button("📥 Generar y descargar PDF"):
 # ---------------------------
 footer_img = load_image_try("assets/Pie.png") or load_image_try("Pie.png")
 if footer_img:
-    try:
-        st.image(footer_img, width=800, use_column_width=False)
-    except:
-        st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#777;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
+    st.image(footer_img, width=800, height=80)
 else:
-    st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#777;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
-
+    st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#1a3d7c;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
 
 
