@@ -51,31 +51,31 @@ if OPENAI_KEY:
 
 def get_gspread_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = None
     if "SERVICE_ACCOUNT_JSON" in st.secrets:
         sa_info = st.secrets["SERVICE_ACCOUNT_JSON"]
         sa_json = json.loads(sa_info) if isinstance(sa_info, str) else sa_info
         creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_json, scope)
+        return gspread.authorize(creds)
     elif os.path.exists("service_account.json"):
         creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
+        return gspread.authorize(creds)
     else:
         st.error("No se encontró credencial de Google Sheets.")
         st.stop()
-    return gspread.authorize(creds)
 
 def get_drive_service():
     scope = ["https://www.googleapis.com/auth/drive"]
-    creds = None
     if "SERVICE_ACCOUNT_JSON" in st.secrets:
         sa_info = st.secrets["SERVICE_ACCOUNT_JSON"]
         sa_json = json.loads(sa_info) if isinstance(sa_info, str) else sa_info
         creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_json, scope)
+        return build('drive', 'v3', credentials=creds)
     elif os.path.exists("service_account.json"):
         creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
+        return build('drive', 'v3', credentials=creds)
     else:
         st.error("No se encontró credencial de Google Drive.")
         st.stop()
-    return build('drive', 'v3', credentials=creds)
 
 # ---------------------------
 # LEER SHEETS
@@ -104,7 +104,11 @@ if not set(required_cols_norm).issubset(actual_cols_norm):
     st.stop()
 
 # Renombrar columnas
-col_mapping = {actual_col: req_col for req_col in required_areas_cols for actual_col in df_areas.columns if req_col.strip().lower() == actual_col.strip().lower()}
+col_mapping = {}
+for req_col in required_areas_cols:
+    for actual_col in df_areas.columns:
+        if req_col.strip().lower() == actual_col.strip().lower():
+            col_mapping[actual_col] = req_col
 df_areas.rename(columns=col_mapping, inplace=True)
 
 # ---------------------------
@@ -112,10 +116,7 @@ df_areas.rename(columns=col_mapping, inplace=True)
 # ---------------------------
 header_img = load_image_try("assets/Encabezado.png") or load_image_try("Encabezado.png")
 if header_img:
-    try:
-        st.image(header_img, width=800, output_format="PNG")
-    except:
-        st.markdown("<div class='header'><h2>📄 Formulario ISO 9001 — Inteligente</h2></div>", unsafe_allow_html=True)
+    st.image(header_img, width=800, use_column_width=False)
 else:
     st.markdown("<div class='header'><h2>📄 Formulario ISO 9001 — Inteligente</h2></div>", unsafe_allow_html=True)
 
@@ -132,7 +133,7 @@ with right:
         df_areas, df_claus, df_ent = load_sheets()
         st.experimental_rerun()
 
-info = df_areas[df_areas["Area"].str.strip().str.lower() == area.strip().lower()].iloc[0]
+info = df_areas[df_areas["Area"] == area].iloc[0]
 st.markdown(f"<div class='card'><strong>{area}</strong><br><span class='small'>Dueño: {info['Dueño del Proceso']} | Puesto: {info['Puesto']} | {info.get('Correo','')}</span></div>", unsafe_allow_html=True)
 
 # ---------------------------
@@ -173,13 +174,8 @@ with col_b:
     responsable = st.text_input("Responsable", value=info.get("Dueño del Proceso",""))
 
 # ---------------------------
-# ---------------------------
-# # ---------------------------
-# ---------------------------
 # FUNCIÓN IA
 # ---------------------------
-resumen_ia = None
-
 def make_prompt(area, info, clausulas_records, entregables_records, descripcion, prioridad):
     prompt = f"""
 Eres un experto en Sistemas de Gestión de Calidad ISO 9001.
@@ -199,40 +195,37 @@ Entrega:
 """
     return prompt
 
+resumen_ia = None
 if st.button("🤖 Consultar IA"):
     if not OPENAI_KEY:
-        st.error("No se detectó clave de OpenAI. Verifica tus secrets o variable de entorno.")
+        st.error("No se detectó clave de OpenAI.")
     else:
         clausulas_records = cl_area.to_dict("records")
         entregables_records = {"entregable": nuevo_entregable, "descripcion": nota_descr}
         prompt = make_prompt(area, info, clausulas_records, entregables_records, nota_descr, prioridad)
         try:
             resp = openai.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4o-mini",
                 messages=[{"role":"user","content": prompt}],
                 temperature=0.2,
                 max_tokens=700
             )
-            resumen_ia = resp.choices[0].message['content'].strip()
+            resumen_ia = resp.choices[0].message.content
             st.markdown(f"<div class='card'>{resumen_ia}</div>", unsafe_allow_html=True)
-        except openai.OpenAIError as e:
+        except openai.error.OpenAIError as e:
             st.error(f"Error al consultar OpenAI: {e}")
-        except Exception as e:
-            st.error(f"Ocurrió un error inesperado al consultar la IA: {e}")
-
-
-
 
 # ---------------------------
 # SUBIR ENTREGABLE A SHEET + DRIVE
 # ---------------------------
-DRIVE_FOLDER_ID = "1ueBPvyVPoSkz0VoLXIkulnwLw3YX"
+DRIVE_FOLDER_ID = "1ueBPvyVPoSkz0VoLXIkulnwLw3WYX"
 drive_service = get_drive_service()
 
 if st.button("💾 Guardar entregable"):
     if not nuevo_entregable:
         st.warning("Agrega texto en 'Entregable / Tarea'.")
     else:
+        # Subir archivo a Drive
         file_url = ""
         if archivo:
             try:
@@ -243,6 +236,7 @@ if st.button("💾 Guardar entregable"):
             except Exception as e:
                 st.error(f"Error subiendo archivo a Drive: {e}")
 
+        # Guardar fila en Sheet
         row = [area, nueva_categoria, nuevo_entregable, str(fecha_compromiso), prioridad, responsable, "Pendiente", nota_descr, file_url]
         try:
             sh.worksheet("Entregables").append_row(row)
@@ -297,10 +291,7 @@ if st.button("📥 Generar y descargar PDF"):
 # ---------------------------
 footer_img = load_image_try("assets/Pie.png") or load_image_try("Pie.png")
 if footer_img:
-    try:
-        st.image(footer_img, width=800, output_format="PNG")
-    except:
-        st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#777;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
+    st.image(footer_img, width=800, height=80)
 else:
     st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#777;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
 
