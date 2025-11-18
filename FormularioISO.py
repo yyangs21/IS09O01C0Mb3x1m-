@@ -361,71 +361,57 @@ if "service_account.json" in os.listdir(".") or "SERVICE_ACCOUNT_JSON" in st.sec
     except Exception:
         drive_service = None
 
+# ---------------------------
+# SUBIR ENTREGABLE A SHEET + DRIVE
+# ---------------------------
+DRIVE_FOLDER_ID = "1ueBPvyVPoSkz0VoLXIkulnwLw3am3WYX"
+drive_service = get_drive_service()
+
 if st.button("💾 Guardar entregable"):
-    if not nuevo_entregable or nuevo_entregable in ("(Sin entregables en esta categoría)","(Sin entregables disponibles)"):
-        st.warning("Selecciona un entregable válido antes de guardar.")
+    if not nuevo_entregable:
+        st.warning("Agrega texto en 'Entregable / Tarea'.")
     else:
         file_url = ""
-if archivo:
-    try:
-        # Convertir archivo Streamlit -> bytes
-        file_bytes = archivo.read()
-        file_stream = io.BytesIO(file_bytes)
-
-        file_metadata = {
-            "name": archivo.name,
-            "parents": [DRIVE_FOLDER_ID]
-        }
-
-        media = MediaIoBaseUpload(
-            file_stream,
-            mimetype=archivo.type,
-            resumable=True
-        )
-
-        file_drive = drive_service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields="id, webViewLink"
-        ).execute()
-
-        file_url = file_drive.get("webViewLink", "")
-
-    except Exception as e:
-        st.error(f"Error subiendo archivo a Drive: {e}")
-
-
-        # FORMATO de fecha a string
-        fecha_str = fecha_compromiso.strftime("%Y-%m-%d")
-
-        # Append a hoja Entregables (fila base)
-        row_ent = [area, nueva_categoria, nuevo_entregable, fecha_str, prioridad, responsable, estado, nota_descr, file_url]
-        try:
-            ws_ent = sh.worksheet("Entregables")
-            ws_ent.append_row(row_ent)
-            st.success("Entregable guardado en hoja 'Entregables'.")
-        except Exception as e:
-            st.error(f"Error guardando en hoja 'Entregables': {e}")
-
-        # Append a hoja Carga (si existe) con: Area, Categoria, Entregable, Fecha Entrega, Link documento
-        try:
+        if archivo:
             try:
-                ws_carga = sh.worksheet("Carga")
-            except Exception:
-                # intentar crear la hoja si no existe (sheet add)
-                try:
-                    sh.add_worksheet(title="Carga", rows="1000", cols="10")
-                    ws_carga = sh.worksheet("Carga")
-                    # escribir encabezado
-                    ws_carga.append_row(["Area","Categoria","Entregable","Fecha Entrega","Link documento"])
-                except Exception:
-                    ws_carga = None
-            if ws_carga:
-                row_carga = [area, nueva_categoria, nuevo_entregable, fecha_str, file_url]
-                ws_carga.append_row(row_carga)
-                st.success("Registro añadido en hoja 'Carga'.")
+                # --- SUBIR A DRIVE ---
+                file_metadata = {
+                    "name": archivo.name,
+                    "parents": [DRIVE_FOLDER_ID]
+                }
+
+                media = MediaIoBaseUpload(archivo, mimetype=archivo.type, resumable=True)
+                uploaded = drive_service.files().create(
+                    body=file_metadata,
+                    media_body=media,
+                    fields="id, webViewLink"
+                ).execute()
+
+                # URL correcta del documento en Drive
+                file_url = uploaded.get("webViewLink", "")
+
+            except Exception as e:
+                st.error(f"Error subiendo archivo a Drive: {e}")
+
+        # --- REGISTRO EN SHEETS ---
+        try:
+            row = [
+                area,
+                nueva_categoria,
+                nuevo_entregable,
+                str(fecha_compromiso),
+                prioridad,
+                responsable,
+                "Pendiente",
+                nota_descr,
+                file_url  # << ESTA ES LA URL CORRECTA
+            ]
+
+            sh.worksheet("Entregables").append_row(row)
+            st.success("Entregable registrado correctamente.")
+
         except Exception as e:
-            st.warning(f"No se pudo registrar en hoja 'Carga': {e}")
+            st.error(f"Error guardando en Sheets: {e}")
 
 # ---------------------------
 # GENERAR PDF (descarga)
