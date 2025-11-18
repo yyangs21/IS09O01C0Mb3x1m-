@@ -180,7 +180,7 @@ with hcol1:
     else:
         st.markdown("<div class='header'><h2>📄 Formulario ISO 9001 — Inteligente</h2></div>", unsafe_allow_html=True)
 with hcol2:
-    st.markdown("<div style='text-align:right'><h3 style='color:#0033cc;margin-top:18px'>MANTENIMIENTO ISO 9001:2015</h3></div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:right'><h3 style='color:#FFFFFF;margin-top:18px'>MANTENIMIENTO ISO 9001:2015</h3></div>", unsafe_allow_html=True)
 
 st.write("")
 
