@@ -176,7 +176,7 @@ header_img = load_image_try("assets/Encabezado.png") or load_image_try("Encabeza
 hcol1, hcol2 = st.columns([3,1])
 with hcol1:
     if header_img:
-        st.image(header_img, width=650)
+        st.image(header_img, width=450)
     else:
         st.markdown("<div class='header'><h2>📄 Formulario ISO 9001 — Inteligente</h2></div>", unsafe_allow_html=True)
 with hcol2:
