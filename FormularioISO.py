@@ -366,22 +366,34 @@ if st.button("💾 Guardar entregable"):
         st.warning("Selecciona un entregable válido antes de guardar.")
     else:
         file_url = ""
-        # Subir archivo a Drive si viene
-        if archivo is not None:
-            try:
-                # archivo es UploadedFile; convertir a BytesIO
-                archivo_bytes = archivo.read()
-                fh = io.BytesIO(archivo_bytes)
-                if drive_service is None:
-                    # intentar iniciar
-                    drive_service = get_drive_service()
-                file_metadata = {"name": archivo.name, "parents": [DRIVE_FOLDER_ID]}
-                media = MediaIoBaseUpload(fh, mimetype=archivo.type, resumable=True)
-                file_drive = drive_service.files().create(body=file_metadata, media_body=media, fields="id, webViewLink").execute()
-                file_url = file_drive.get("webViewLink","")
-            except Exception as e:
-                st.warning(f"Error subiendo archivo a Drive (el entregable se guardará en Sheets sin link): {e}")
-                file_url = ""
+if archivo:
+    try:
+        # Convertir archivo Streamlit -> bytes
+        file_bytes = archivo.read()
+        file_stream = io.BytesIO(file_bytes)
+
+        file_metadata = {
+            "name": archivo.name,
+            "parents": [DRIVE_FOLDER_ID]
+        }
+
+        media = MediaIoBaseUpload(
+            file_stream,
+            mimetype=archivo.type,
+            resumable=True
+        )
+
+        file_drive = drive_service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields="id, webViewLink"
+        ).execute()
+
+        file_url = file_drive.get("webViewLink", "")
+
+    except Exception as e:
+        st.error(f"Error subiendo archivo a Drive: {e}")
+
 
         # FORMATO de fecha a string
         fecha_str = fecha_compromiso.strftime("%Y-%m-%d")
