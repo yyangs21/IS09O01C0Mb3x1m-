@@ -317,7 +317,7 @@ with col_b:
     responsable = st.text_input("Responsable", value=info.get("Dueño del Proceso",""))
 
     # Estado: libre (texto)
-    estado = st.text_input("Estado (escribe texto libre)", value="Pendiente")
+    estado = st.text_input("Estado", value="Pendiente")
 
 # ---------------------------
 # CHAT / CONSULTA IA (asistente) - usa contexto del area
