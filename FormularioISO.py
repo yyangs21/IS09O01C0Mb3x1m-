@@ -93,41 +93,43 @@ def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
         raise
 
 # ---------------------------
-def get_oauth_creds(scopes, token_file="token.pickle"):
-    creds = None
-    # Si ya hay token
-    if os.path.exists(token_file):
-        with open(token_file, "rb") as f:
-            creds = pickle.load(f)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            if "SERVICE_CREDENTIALS_JSON" not in st.secrets:
-                st.error("No se encontró SERVICE_CREDENTIALS_JSON en Streamlit Secrets")
-                st.stop()
-            creds_dict = st.secrets["SERVICE_CREDENTIALS_JSON"]
-            temp_file = "temp_creds.json"
-            with open(temp_file, "w") as f:
-                json.dump(creds_dict, f)
-            flow = InstalledAppFlow.from_client_secrets_file(temp_file, scopes)
-            creds = flow.run_local_server(port=0)
-            with open(token_file, "wb") as f:
-                pickle.dump(creds, f)
-            os.remove(temp_file)
+def get_oauth_creds(scopes):
+    """
+    Obtiene credenciales OAuth desde st.secrets (SERVICE_ACCOUNT_JSON),
+    y devuelve las credenciales listas para usar con Google APIs.
+    """
+    if "SERVICE_ACCOUNT_JSON" not in st.secrets:
+        st.error("No se encontró SERVICE_ACCOUNT_JSON en Streamlit Secrets.")
+        st.stop()
+
+    # Convertimos el secreto JSON a diccionario
+    creds_json_str = st.secrets["SERVICE_ACCOUNT_JSON"]
+    creds_dict = json.loads(creds_json_str)
+
+    # Crear flow directamente desde el diccionario
+    flow = InstalledAppFlow.from_client_config(creds_dict, scopes)
+    creds = flow.run_local_server(port=0)
+
     return creds
 
+
 def get_gspread_client():
+    """
+    Devuelve cliente gspread autorizado para Google Sheets usando OAuth.
+    """
     scopes = ["https://www.googleapis.com/auth/spreadsheets",
               "https://www.googleapis.com/auth/drive"]
     creds = get_oauth_creds(scopes)
     return gspread.authorize(creds)
 
+
 def get_drive_service():
+    """
+    Devuelve servicio de Google Drive autorizado para subir archivos.
+    """
     scopes = ["https://www.googleapis.com/auth/drive"]
     creds = get_oauth_creds(scopes)
     return build('drive', 'v3', credentials=creds)
-
 # ---------------------------
 # LEER SHEETS
 # ---------------------------
