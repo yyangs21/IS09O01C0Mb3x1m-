@@ -25,21 +25,18 @@ from datetime import datetime
 load_dotenv()
 st.set_page_config(page_title="Formulario ISO 9001 — Inteligente", layout="wide", page_icon="📄")
 
-# CSS / Diseño visual (todo texto azul)
-st.markdown(
-    """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-    html, body, [class*="css"]  { font-family: 'Inter', sans-serif; color: #0033cc !important; }
-    .header { border-radius:12px; padding:8px 14px; background: linear-gradient(90deg,#f7fbff, #ffffff); box-shadow: 0 6px 20px rgba(13,38,66,0.06); color:#0033cc !important;}
-    .card { background:#fff; padding:12px; border-radius:10px; box-shadow:0 6px 18px rgba(12,40,80,0.04); margin-bottom:10px; color:#0033cc !important;}
-    .chip { display:inline-block; padding:6px 10px; margin:4px; border-radius:18px; background:#f1f7ff; border:1px solid #e1efff; font-size:14px; color:#0033cc !important;}
-    .small{ font-size:13px; color:#0033cc !important; }
-    label, input, select, textarea, .stTextInput, .stDateInput { color: #0033cc !important; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+# CSS / Diseño visual
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+html, body, [class*="css"] { font-family: 'Inter', sans-serif; color: #0033cc !important; }
+.header { border-radius:12px; padding:8px 14px; background: linear-gradient(90deg,#f7fbff, #ffffff); box-shadow: 0 6px 20px rgba(13,38,66,0.06); color:#0033cc !important;}
+.card { background:#fff; padding:12px; border-radius:10px; box-shadow:0 6px 18px rgba(12,40,80,0.04); margin-bottom:10px; color:#0033cc !important;}
+.chip { display:inline-block; padding:6px 10px; margin:4px; border-radius:18px; background:#f1f7ff; border:1px solid #e1efff; font-size:14px; color:#0033cc !important;}
+.small{ font-size:13px; color:#0033cc !important; }
+label, input, select, textarea, .stTextInput, .stDateInput { color: #0033cc !important; }
+</style>
+""", unsafe_allow_html=True)
 
 def load_image_try(path):
     try:
@@ -48,7 +45,7 @@ def load_image_try(path):
         return None
 
 # ---------------------------
-# OPENAI API (leer key desde secrets/.env)
+# OPENAI API
 # ---------------------------
 OPENAI_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
 if OPENAI_KEY:
@@ -57,44 +54,18 @@ if OPENAI_KEY:
 def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700):
     if not OPENAI_KEY:
         raise RuntimeError("OPENAI API key no configurada.")
-    try:
-        if hasattr(openai, "chat") and hasattr(openai.chat, "completions"):
-            resp = openai.chat.completions.create(
-                model=model,
-                messages=[{"role":"user","content": prompt}],
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
-            try:
-                return resp.choices[0].message.content
-            except Exception:
-                return getattr(resp.choices[0].message, "content", str(resp))
-        else:
-            resp = openai.ChatCompletion.create(
-                model=model,
-                messages=[{"role":"user","content": prompt}],
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
-            try:
-                return resp.choices[0].message['content']
-            except Exception:
-                try:
-                    return resp.choices[0].message.content
-                except Exception:
-                    return str(resp)
-    except Exception as e:
-        raise
+    resp = openai.ChatCompletion.create(
+        model=model,
+        messages=[{"role":"user","content": prompt}],
+        temperature=temperature,
+        max_tokens=max_tokens
+    )
+    return resp.choices[0].message['content']
 
 # ---------------------------
 # GSPREAD CLIENT (OAuth usuario)
 # ---------------------------
 def get_gspread_client_oauth():
-    import gspread
-    from google_auth_oauthlib.flow import InstalledAppFlow
-    from google.auth.transport.requests import Request
-    import pickle
-
     SCOPES = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive.file"
@@ -117,7 +88,6 @@ def get_gspread_client_oauth():
             flow = InstalledAppFlow.from_client_config(creds_dict, SCOPES)
             creds = flow.run_local_server(port=0)
 
-        # Guardar token
         with open(token_file, "wb") as f:
             pickle.dump(creds, f)
 
@@ -125,17 +95,16 @@ def get_gspread_client_oauth():
     return gc, creds
 
 # ---------------------------
-# GOOGLE DRIVE SERVICE (OAuth usuario)
+# GOOGLE DRIVE SERVICE
 # ---------------------------
 def get_drive_service_oauth():
-    from googleapiclient.discovery import build
-    gc, creds = get_gspread_client_oauth()
-    drive_service = build("drive", "v3", credentials=creds)
-    return drive_service
+    _, creds = get_gspread_client_oauth()
+    return build("drive", "v3", credentials=creds)
 
 # ---------------------------
-# USO
+# URL y carga de hojas
 # ---------------------------
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1mQY0_MEjluVT95iat5_5qGyffBJGp2n0hwEChvp2Ivs"
 gc, creds = get_gspread_client_oauth()
 try:
     sh = gc.open_by_url(SHEET_URL)
@@ -144,18 +113,6 @@ except Exception as e:
     st.stop()
 
 drive_service = get_drive_service_oauth()
-
-
-# ---------------------------
-# LEER SHEETS
-# ---------------------------
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1mQY0_MEjluVT95iat5_5qGyffBJGp2n0hwEChvp2Ivs"
-gc = get_gspread_client_oauth()
-try:
-    sh = gc.open_by_url(SHEET_URL)
-except Exception as e:
-    st.error(f"Error accediendo a Google Sheets: {e}")
-    st.stop()
 
 def load_sheets():
     df_areas = pd.DataFrame(sh.worksheet("Areas").get_all_records())
@@ -170,7 +127,7 @@ def load_sheets():
 df_areas, df_claus, df_ent, df_carga = load_sheets()
 
 # ---------------------------
-# VALIDAR HOJA AREAS
+# Validar hoja Areas
 # ---------------------------
 required_areas_cols = ["Area", "Dueño del Proceso", "Puesto", "Correo"]
 actual_cols_norm = [c.strip().lower() for c in df_areas.columns]
@@ -216,7 +173,7 @@ info = df_areas[df_areas["Area"].str.strip().str.lower() == area.strip().lower()
 st.markdown(f"<div class='card'><strong>{area}</strong><br><span class='small'>Dueño: {info['Dueño del Proceso']} | Puesto: {info['Puesto']} | {info.get('Correo','')}</span></div>", unsafe_allow_html=True)
 
 # ---------------------------
-# CLÁUSULAS
+# Cláusulas
 # ---------------------------
 st.subheader("Cláusulas ISO aplicables")
 cl_area = df_claus[df_claus["Area"].str.strip().str.lower() == area.strip().lower()] if not df_claus.empty else pd.DataFrame()
@@ -227,7 +184,7 @@ else:
         st.markdown(f"<span class='chip'>{r.get('Clausula','')} — {r.get('Descripcion', r.get('Descripción',''))}</span>", unsafe_allow_html=True)
 
 # ---------------------------
-# ENTREGABLES
+# Entregables
 # ---------------------------
 st.subheader("Entregables asignados")
 ent_area = df_ent[df_ent["Area"].str.strip().str.lower() == area.strip().lower()] if not df_ent.empty else pd.DataFrame()
@@ -243,74 +200,27 @@ else:
 st.markdown("### Registrar / Analizar un entregable")
 col_a, col_b = st.columns([2,1])
 
-cats_area = []
-if not ent_area.empty:
-    cats_area = sorted([str(x).strip() for x in ent_area["Categoria"].dropna().unique()])
-    if "" in cats_area:
-        cats_area = [c for c in cats_area if c]
+cats_area = sorted([str(x).strip() for x in ent_area["Categoria"].dropna().unique()]) if not ent_area.empty else ["(Sin categorías en Entregables)"]
 if not cats_area:
     cats_area = ["(Sin categorías en Entregables)"]
 
 with col_a:
     nueva_categoria = st.selectbox("Categoría", options=cats_area)
+    posibles = ["(Sin entregables disponibles)"]
     if nueva_categoria and nueva_categoria != "(Sin categorías en Entregables)":
         mask = (df_ent["Area"].str.strip().str.lower() == area.strip().lower()) & (df_ent["Categoria"].str.strip().str.lower() == str(nueva_categoria).strip().lower())
-        posibles = df_ent[mask]["Entregable"].dropna().unique().tolist()
-        posibles = [str(x) for x in posibles]
-        if not posibles:
-            posibles = ["(Sin entregables en esta categoría)"]
-    else:
-        posibles = ["(Sin entregables disponibles)"]
-
+        posibles_tmp = df_ent[mask]["Entregable"].dropna().unique().tolist()
+        if posibles_tmp:
+            posibles = [str(x) for x in posibles_tmp]
     nuevo_entregable = st.selectbox("Entregable / Tarea", options=posibles)
     nota_descr = st.text_area("Descripción / Comentarios (libre)", value="", height=140)
     archivo = st.file_uploader("Subir archivo entregable (PDF/Word/Excel)", type=["pdf","docx","xlsx"], key="uploader")
 
 with col_b:
-    prioridad_options = []
-    if nueva_categoria and nueva_categoria != "(Sin categorías en Entregables)":
-        pri = df_ent[ (df_ent["Area"].str.strip().str.lower() == area.strip().lower()) & (df_ent["Categoria"].str.strip().str.lower() == str(nueva_categoria).strip().lower()) ]["Prioridad"].dropna().unique().tolist()
-        prioridad_options = [str(x) for x in pri if str(x).strip()]
-    if not prioridad_options:
-        prioridad_options = ["Baja","Media","Alta"]
-
-    default_date = None
-    if nuevo_entregable and nuevo_entregable not in ("(Sin entregables en esta categoría)","(Sin entregables disponibles)"):
-        row_match = df_ent[
-            (df_ent["Area"].str.strip().str.lower() == area.strip().lower()) &
-            (df_ent["Categoria"].str.strip().str.lower() == str(nueva_categoria).strip().lower()) &
-            (df_ent["Entregable"].str.strip().str.lower() == str(nuevo_entregable).strip().lower())
-        ]
-        if not row_match.empty:
-            date_col = None
-            for col_try in ["Fecha Compromiso","Fecha compromiso","Fecha Entrega","FechaEntrega","Fecha"]:
-                if col_try in row_match.columns:
-                    date_col = col_try
-                    break
-            if date_col:
-                val = row_match.iloc[0].get(date_col)
-                if pd.notna(val) and val != "":
-                    try:
-                        dt = pd.to_datetime(val, dayfirst=True, errors='coerce')
-                        if pd.notna(dt):
-                            default_date = dt.date()
-                    except Exception:
-                        default_date = None
-            try:
-                p = row_match.iloc[0].get("Prioridad") or row_match.iloc[0].get("prioridad") or None
-                if p and str(p).strip() and str(p).strip() in prioridad_options:
-                    prioridad_default = str(p).strip()
-                else:
-                    prioridad_default = prioridad_options[0]
-            except Exception:
-                prioridad_default = prioridad_options[0]
-        else:
-            prioridad_default = prioridad_options[0]
-    else:
-        prioridad_default = prioridad_options[0]
-
-    prioridad = st.selectbox("Prioridad", options=prioridad_options, index=max(0, prioridad_options.index(prioridad_default) if prioridad_default in prioridad_options else 0))
-    fecha_compromiso = st.date_input("Fecha compromiso", value=default_date if default_date else datetime.today().date())
+    prioridad_options = ["Baja","Media","Alta"]
+    prioridad_default = prioridad_options[0]
+    prioridad = st.selectbox("Prioridad", options=prioridad_options, index=prioridad_options.index(prioridad_default))
+    fecha_compromiso = st.date_input("Fecha compromiso", value=datetime.today().date())
     responsable = st.text_input("Responsable", value=info.get("Dueño del Proceso",""))
     estado = st.text_input("Estado", value="Pendiente")
 
@@ -322,7 +232,7 @@ pregunta_ia = st.text_input("Escribe tu duda o consulta sobre ISO 9001 para tu �
 
 if st.button("Preguntar a la IA"):
     if not OPENAI_KEY:
-        st.error("No se detectó clave de OpenAI. Añade OPENAI_API_KEY en Streamlit Secrets o .env.")
+        st.error("No se detectó clave de OpenAI.")
     elif not pregunta_ia.strip():
         st.warning("Escribe tu consulta antes de enviar.")
     else:
@@ -339,22 +249,15 @@ Consulta del usuario: {pregunta_ia}
 
 Responde de manera clara, práctica y breve, indicando si aplica y qué acciones recomendarías.
 """
-            respuesta = query_openai(contexto, model="gpt-3.5-turbo", temperature=0.2, max_tokens=500)
+            respuesta = query_openai(contexto)
             st.markdown(f"<div class='card'>{respuesta}</div>", unsafe_allow_html=True)
         except Exception as e:
-            st.error(f"Ocurrió un error inesperado al consultar la IA: {e}")
+            st.error(f"Ocurrió un error al consultar la IA: {e}")
 
 # ---------------------------
 # GUARDAR ENTREGABLE
 # ---------------------------
 DRIVE_FOLDER_ID = "1ueBPvyVPoSkz0VoLXIkulnwLw3am3WYX"
-drive_service = None
-
-if "credentials.json" in os.listdir("."):
-    try:
-        drive_service = get_drive_service_oauth()
-    except Exception:
-        drive_service = None
 
 def subir_archivo_drive(service_drive, archivo, carpeta_id):
     archivo_bytes = archivo.read()
@@ -366,11 +269,7 @@ def subir_archivo_drive(service_drive, archivo, carpeta_id):
 
 def hacer_publico(service_drive, file_id):
     try:
-        service_drive.permissions().create(
-            fileId=file_id,
-            body={"role": "reader", "type": "anyone"},
-            fields="id"
-        ).execute()
+        service_drive.permissions().create(fileId=file_id, body={"role": "reader", "type": "anyone"}, fields="id").execute()
     except Exception:
         pass
 
@@ -378,12 +277,9 @@ def asegurar_hoja_carga(sh_obj):
     try:
         ws = sh_obj.worksheet("Carga")
     except Exception:
-        try:
-            sh_obj.add_worksheet(title="Carga", rows="1000", cols="10")
-            ws = sh_obj.worksheet("Carga")
-            ws.append_row(["Area","Categoria","Entregable","Fecha Entrega","Link Documento"])
-        except Exception:
-            ws = None
+        sh_obj.add_worksheet(title="Carga", rows="1000", cols="10")
+        ws = sh_obj.worksheet("Carga")
+        ws.append_row(["Area","Categoria","Entregable","Fecha Entrega","Link Documento"])
     return ws
 
 if st.button("💾 Guardar entregable"):
@@ -391,31 +287,26 @@ if st.button("💾 Guardar entregable"):
         st.warning("Selecciona un entregable válido antes de guardar.")
     else:
         file_link = ""
-        if archivo is not None:
+        if archivo:
             try:
-                if drive_service is None:
-                    drive_service = get_drive_service_oauth()
+                drive_service = get_drive_service_oauth()
                 file_id = subir_archivo_drive(drive_service, archivo, DRIVE_FOLDER_ID)
-                try:
-                    hacer_publico(drive_service, file_id)
-                except Exception:
-                    pass
+                hacer_publico(drive_service, file_id)
                 file_link = f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
                 st.success("Archivo subido a Google Drive correctamente.")
             except Exception as e:
                 st.error(f"No se pudo subir el archivo a Drive: {e}")
-                file_link = ""
 
         ws_carga = asegurar_hoja_carga(sh)
-        if ws_carga is not None:
+        if ws_carga:
             try:
                 ws_carga.append_row([area, nueva_categoria, nuevo_entregable, fecha_compromiso.strftime("%d/%m/%Y"), file_link])
                 st.success("Entregable guardado en la hoja de Carga ✅")
             except Exception as e:
                 st.error(f"No se pudo guardar en Google Sheets: {e}")
         else:
-            st.error("No se pudo asegurar la hoja 'Carga' para registrar datos.")
-# ---------------------------
+            st.error("No se pudo asegurar la hoja 'Carga'.")
+
 # GENERAR PDF (descarga)
 # ---------------------------
 def build_pdf_bytes(area, info, nuevo_entregable, nota_descr, resumen_ia=""):
