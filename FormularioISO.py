@@ -93,8 +93,9 @@ def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
         raise
 
 # ---------------------------
-def get_oauth_creds(scopes, token_file="token.pickle", credentials_file="credentials.json"):
+def get_oauth_creds(scopes, token_file="token.pickle"):
     creds = None
+    # Si ya hay token
     if os.path.exists(token_file):
         with open(token_file, "rb") as f:
             creds = pickle.load(f)
@@ -102,10 +103,18 @@ def get_oauth_creds(scopes, token_file="token.pickle", credentials_file="credent
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(credentials_file, scopes)
+            if "SERVICE_CREDENTIALS_JSON" not in st.secrets:
+                st.error("No se encontró SERVICE_CREDENTIALS_JSON en Streamlit Secrets")
+                st.stop()
+            creds_dict = st.secrets["SERVICE_CREDENTIALS_JSON"]
+            temp_file = "temp_creds.json"
+            with open(temp_file, "w") as f:
+                json.dump(creds_dict, f)
+            flow = InstalledAppFlow.from_client_secrets_file(temp_file, scopes)
             creds = flow.run_local_server(port=0)
-        with open(token_file, "wb") as f:
-            pickle.dump(creds, f)
+            with open(token_file, "wb") as f:
+                pickle.dump(creds, f)
+            os.remove(temp_file)
     return creds
 
 def get_gspread_client():
@@ -117,7 +126,7 @@ def get_gspread_client():
 def get_drive_service():
     scopes = ["https://www.googleapis.com/auth/drive"]
     creds = get_oauth_creds(scopes)
-    return build("drive", "v3", credentials=creds)
+    return build('drive', 'v3', credentials=creds)
 
 # ---------------------------
 # LEER SHEETS
