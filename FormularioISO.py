@@ -144,7 +144,8 @@ def load_sheets():
     try:
         df_carga = pd.DataFrame(sh.worksheet("Carga").get_all_records())
     except Exception:
-        df_carga = pd.DataFrame(columns=["Area","Categoria","Entregable","Fecha Entrega","Link documento"])
+        # aseguramos encabezado correcto (Link Documento con D mayúscula)
+        df_carga = pd.DataFrame(columns=["Area","Categoria","Entregable","Fecha Entrega","Link Documento"])
     return df_areas, df_claus, df_ent, df_carga
 
 df_areas, df_claus, df_ent, df_carga = load_sheets()
@@ -232,7 +233,7 @@ col_a, col_b = st.columns([2,1])
 cats_area = []
 if not ent_area.empty:
     cats_area = sorted([str(x).strip() for x in ent_area["Categoria"].dropna().unique()])
-    if "" in cats_area: 
+    if "" in cats_area:
         cats_area = [c for c in cats_area if c]
 # Si no hay categorias, dejar una opción vacía
 if not cats_area:
@@ -350,7 +351,7 @@ Responde de manera clara, práctica y breve, indicando si aplica y qué acciones
             st.error(f"Ocurrió un error inesperado al consultar la IA: {e}")
 
 # ---------------------------
-# GUARDAR ENTREGABLE: append a Entregables y a Carga (si existe)
+# GUARDAR ENTREGABLE: subir a Drive y registrar SOLO en hoja Carga (A,E columnas exactas)
 # ---------------------------
 DRIVE_FOLDER_ID = "1ueBPvyVPoSkz0VoLXIkulnwLw3am3WYX"
 drive_service = None
@@ -361,59 +362,81 @@ if "service_account.json" in os.listdir(".") or "SERVICE_ACCOUNT_JSON" in st.sec
     except Exception:
         drive_service = None
 
+def subir_archivo_drive(service_drive, archivo, carpeta_id):
+    # archivo: st.uploaded_file object
+    archivo_bytes = archivo.read()
+    fh = io.BytesIO(archivo_bytes)
+    media = MediaIoBaseUpload(fh, mimetype=archivo.type, resumable=False)
+    file_metadata = {"name": archivo.name, "parents": [carpeta_id]}
+    created = service_drive.files().create(body=file_metadata, media_body=media, fields="id").execute()
+    return created.get("id")
+
+def hacer_publico(service_drive, file_id):
+    try:
+        # permiso público lectura
+        service_drive.permissions().create(
+            fileId=file_id,
+            body={"role": "reader", "type": "anyone"},
+            fields="id"
+        ).execute()
+    except Exception:
+        # si falla por permisos insuficientes, seguimos sin detener el flujo
+        pass
+
+def asegurar_hoja_carga(sh_obj):
+    try:
+        ws = sh_obj.worksheet("Carga")
+    except Exception:
+        try:
+            sh_obj.add_worksheet(title="Carga", rows="1000", cols="10")
+            ws = sh_obj.worksheet("Carga")
+            # encabezado exacto solicitado
+            ws.append_row(["Area","Categoria","Entregable","Fecha Entrega","Link Documento"])
+        except Exception:
+            ws = None
+    return ws
+
 if st.button("💾 Guardar entregable"):
     if not nuevo_entregable or nuevo_entregable in ("(Sin entregables en esta categoría)","(Sin entregables disponibles)"):
         st.warning("Selecciona un entregable válido antes de guardar.")
     else:
-        file_url = ""
-        # Subir archivo a Drive si viene
+        file_link = ""
+        # Subir archivo a Drive si se cargó
         if archivo is not None:
             try:
-                # archivo es UploadedFile; convertir a BytesIO
-                archivo_bytes = archivo.read()
-                fh = io.BytesIO(archivo_bytes)
                 if drive_service is None:
-                    # intentar iniciar
                     drive_service = get_drive_service()
-                file_metadata = {"name": archivo.name, "parents": [DRIVE_FOLDER_ID]}
-                media = MediaIoBaseUpload(fh, mimetype=archivo.type, resumable=True)
-                file_drive = drive_service.files().create(body=file_metadata, media_body=media, fields="id, webViewLink").execute()
-                file_url = file_drive.get("webViewLink","")
+
+                file_id = subir_archivo_drive(drive_service, archivo, DRIVE_FOLDER_ID)
+                # intentar hacer público (anyone with link)
+                try:
+                    hacer_publico(drive_service, file_id)
+                except Exception:
+                    pass
+
+                file_link = f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
+
+                st.success("Archivo subido a Google Drive correctamente.")
+                st.markdown(f"**Link del archivo:** {file_link}")
+
             except Exception as e:
-                st.warning(f"Error subiendo archivo a Drive (el entregable se guardará en Sheets sin link): {e}")
-                file_url = ""
+                st.warning(f"Error subiendo archivo a Drive: {e}")
+                file_link = ""
 
         # FORMATO de fecha a string
         fecha_str = fecha_compromiso.strftime("%Y-%m-%d")
 
-        # Append a hoja Entregables (fila base)
-        row_ent = [area, nueva_categoria, nuevo_entregable, fecha_str, prioridad, responsable, estado, nota_descr, file_url]
+        # Solo guardamos en la hoja "Carga" con EXACTAMENTE estas 5 columnas
         try:
-            ws_ent = sh.worksheet("Entregables")
-            ws_ent.append_row(row_ent)
-            st.success("Entregable guardado en hoja 'Entregables'.")
-        except Exception as e:
-            st.error(f"Error guardando en hoja 'Entregables': {e}")
-
-        # Append a hoja Carga (si existe) con: Area, Categoria, Entregable, Fecha Entrega, Link documento
-        try:
-            try:
-                ws_carga = sh.worksheet("Carga")
-            except Exception:
-                # intentar crear la hoja si no existe (sheet add)
-                try:
-                    sh.add_worksheet(title="Carga", rows="1000", cols="10")
-                    ws_carga = sh.worksheet("Carga")
-                    # escribir encabezado
-                    ws_carga.append_row(["Area","Categoria","Entregable","Fecha Entrega","Link documento"])
-                except Exception:
-                    ws_carga = None
+            ws_carga = asegurar_hoja_carga(sh)
             if ws_carga:
-                row_carga = [area, nueva_categoria, nuevo_entregable, fecha_str, file_url]
+                row_carga = [area, nueva_categoria, nuevo_entregable, fecha_str, file_link]
                 ws_carga.append_row(row_carga)
                 st.success("Registro añadido en hoja 'Carga'.")
+            else:
+                st.error("No se pudo acceder o crear la hoja 'Carga'. Verifica permisos.")
         except Exception as e:
-            st.warning(f"No se pudo registrar en hoja 'Carga': {e}")
+            st.error(f"No se pudo registrar en hoja 'Carga': {e}")
 
 # ---------------------------
 # GENERAR PDF (descarga)
@@ -475,5 +498,6 @@ if footer_img:
         st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#0033cc;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
 else:
     st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#0033cc;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
+
 
 
