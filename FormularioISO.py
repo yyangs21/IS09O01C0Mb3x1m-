@@ -97,15 +97,16 @@ def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
 # Cliente gspread con Service Account (Streamlit Cloud)
 # ---------------------------
 def get_gspread_client():
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
     creds_json_str = st.secrets.get("SERVICE_ACCOUNT_JSON")
     if not creds_json_str:
         raise RuntimeError("No se encontró SERVICE_ACCOUNT_JSON en Streamlit Secrets.")
 
     creds_dict = json.loads(creds_json_str)
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
     credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return gspread.authorize(credentials)
 
