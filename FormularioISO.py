@@ -94,39 +94,36 @@ def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
 
 # ---------------------------
 def get_oauth_creds(scopes):
-    """
-    Obtiene credenciales OAuth desde st.secrets (SERVICE_ACCOUNT_JSON),
-    y devuelve las credenciales listas para usar con Google APIs.
-    """
-    if "SERVICE_ACCOUNT_JSON" not in st.secrets:
-        st.error("No se encontró SERVICE_ACCOUNT_JSON en Streamlit Secrets.")
-        st.stop()
+    creds_json_str = st.secrets.get("SERVICE_CREDENTIALS_JSON")
+    if not creds_json_str:
+        raise RuntimeError("No se encontró SERVICE_CREDENTIALS_JSON en Streamlit Secrets.")
 
-    # Convertimos el secreto JSON a diccionario
-    creds_json_str = st.secrets["SERVICE_ACCOUNT_JSON"]
-    creds_dict = json.loads(creds_json_str)
+    with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".json") as f:
+        f.write(creds_json_str)
+        temp_file = f.name
 
-    # Crear flow directamente desde el diccionario
-    flow = InstalledAppFlow.from_client_config(creds_dict, scopes)
-    creds = flow.run_local_server(port=0)
+    # Usar flujo por consola (headless) en Streamlit Cloud
+    flow = InstalledAppFlow.from_client_secrets_file(temp_file, scopes)
+    creds = flow.run_console()  # <-- Cambiado de run_local_server a run_console()
 
+    os.remove(temp_file)
     return creds
 
-
+# ---------------------------
+# Cliente gspread
+# ---------------------------
 def get_gspread_client():
-    """
-    Devuelve cliente gspread autorizado para Google Sheets usando OAuth.
-    """
-    scopes = ["https://www.googleapis.com/auth/spreadsheets",
-              "https://www.googleapis.com/auth/drive"]
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
     creds = get_oauth_creds(scopes)
     return gspread.authorize(creds)
 
-
+# ---------------------------
+# Cliente Google Drive
+# ---------------------------
 def get_drive_service():
-    """
-    Devuelve servicio de Google Drive autorizado para subir archivos.
-    """
     scopes = ["https://www.googleapis.com/auth/drive"]
     creds = get_oauth_creds(scopes)
     return build('drive', 'v3', credentials=creds)
