@@ -20,6 +20,7 @@ from PIL import Image
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from datetime import datetime
+import dropbox
 
 # ---------------------------
 # CONFIG
@@ -56,11 +57,10 @@ OPENAI_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
 if OPENAI_KEY:
     openai.api_key = OPENAI_KEY
 
-# Helper para consultar OpenAI con compatibilidad (intenta nueva interfaz, luego fallback)
+# Helper para consultar OpenAI
 def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700):
     if not OPENAI_KEY:
         raise RuntimeError("OPENAI API key no configurada.")
-    # Intentar la nueva interfaz (openai.chat.completions.create)
     try:
         if hasattr(openai, "chat") and hasattr(openai.chat, "completions"):
             resp = openai.chat.completions.create(
@@ -69,20 +69,17 @@ def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
                 temperature=temperature,
                 max_tokens=max_tokens
             )
-            # lectura flexible del contenido
             try:
                 return resp.choices[0].message.content
             except Exception:
                 return getattr(resp.choices[0].message, "content", str(resp))
         else:
-            # fallback a la API antigua si está disponible
             resp = openai.ChatCompletion.create(
                 model=model,
                 messages=[{"role":"user","content": prompt}],
                 temperature=temperature,
                 max_tokens=max_tokens
             )
-            # intento de lectura flexible
             try:
                 return resp.choices[0].message['content']
             except Exception:
@@ -91,10 +88,10 @@ def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
                 except Exception:
                     return str(resp)
     except Exception as e:
-        # rebota la excepción para manejo en UI
         raise
 
-# Cliente gspread con Service Account (Streamlit Cloud)
+# ---------------------------
+# Cliente gspread con Service Account
 # ---------------------------
 def get_gspread_client():
     scopes = [
@@ -111,18 +108,6 @@ def get_gspread_client():
     return gspread.authorize(credentials)
 
 # ---------------------------
-# Cliente Google Drive con Service Account
-# ---------------------------
-def get_drive_service():
-    creds_json_str = st.secrets.get("SERVICE_ACCOUNT_JSON")
-    if not creds_json_str:
-        raise RuntimeError("No se encontró SERVICE_ACCOUNT_JSON en Streamlit Secrets.")
-
-    creds_dict = json.loads(creds_json_str)
-    scopes = ["https://www.googleapis.com/auth/drive"]
-    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    return build('drive', 'v3', credentials=credentials)
-# ---------------------------
 # LEER SHEETS
 # ---------------------------
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1mQY0_MEjluVT95iat5_5qGyffBJGp2n0hwEChvp2Ivs"
@@ -134,15 +119,12 @@ except Exception as e:
     st.stop()
 
 def load_sheets():
-    # lee hojas principales; si no existe 'Carga' se notificará más adelante al guardar
     df_areas = pd.DataFrame(sh.worksheet("Areas").get_all_records())
     df_claus = pd.DataFrame(sh.worksheet("Clausulas").get_all_records())
     df_ent = pd.DataFrame(sh.worksheet("Entregables").get_all_records())
-    # si existe hoja 'Carga' la leemos (no es obligatorio)
     try:
         df_carga = pd.DataFrame(sh.worksheet("Carga").get_all_records())
     except Exception:
-        # aseguramos encabezado correcto (Link Documento con D mayúscula)
         df_carga = pd.DataFrame(columns=["Area","Categoria","Entregable","Fecha Entrega","Link Documento"])
     return df_areas, df_claus, df_ent, df_carga
 
@@ -159,7 +141,6 @@ if not set(required_cols_norm).issubset(actual_cols_norm):
     st.error(f"La hoja 'Areas' debe contener columnas: {required_areas_cols}. Revisa nombres exactos.")
     st.stop()
 
-# Renombrar columnas (normalizar nombres)
 col_mapping = {}
 for req_col in required_areas_cols:
     for actual_col in df_areas.columns:
@@ -168,7 +149,7 @@ for req_col in required_areas_cols:
 df_areas.rename(columns=col_mapping, inplace=True)
 
 # ---------------------------
-# HEADER con titulo adicional a la derecha
+# HEADER con titulo
 # ---------------------------
 header_img = load_image_try("assets/Encabezado.png") or load_image_try("Encabezado.png")
 
@@ -194,7 +175,6 @@ with right:
         df_areas, df_claus, df_ent, df_carga = load_sheets()
         st.experimental_rerun()
 
-# Info dueño proceso
 info = df_areas[df_areas["Area"].str.strip().str.lower() == area.strip().lower()].iloc[0]
 st.markdown(f"<div class='card'><strong>{area}</strong><br><span class='small'>Dueño: {info['Dueño del Proceso']} | Puesto: {info['Puesto']} | {info.get('Correo','')}</span></div>", unsafe_allow_html=True)
 
@@ -210,7 +190,7 @@ else:
         st.markdown(f"<span class='chip'>{r.get('Clausula','')} — {r.get('Descripcion', r.get('Descripción',''))}</span>", unsafe_allow_html=True)
 
 # ---------------------------
-# ENTREGABLES ASIGNADOS (vista)
+# ENTREGABLES ASIGNADOS
 # ---------------------------
 st.subheader("Entregables asignados")
 ent_area = df_ent[df_ent["Area"].str.strip().str.lower() == area.strip().lower()] if not df_ent.empty else pd.DataFrame()
@@ -221,27 +201,21 @@ else:
         st.markdown(f"<div class='card'><strong>{r.get('Categoria','')}</strong><br>{r.get('Entregable','')}<br><span class='small'>Estado: {r.get('Estado','')}</span></div>", unsafe_allow_html=True)
 
 # ---------------------------
-# NUEVO ENTREGABLE: CAMPOS POBLADOS DESDE SHEET (solo descripcion y estado libres)
+# NUEVO ENTREGABLE
 # ---------------------------
 st.markdown("### Registrar / Analizar un entregable")
 col_a, col_b = st.columns([2,1])
 
-# --- Obtener listas según area
-# Categorias disponibles para el area
 cats_area = []
 if not ent_area.empty:
     cats_area = sorted([str(x).strip() for x in ent_area["Categoria"].dropna().unique()])
     if "" in cats_area:
         cats_area = [c for c in cats_area if c]
-# Si no hay categorias, dejar una opción vacía
 if not cats_area:
     cats_area = ["(Sin categorías en Entregables)"]
 
 with col_a:
-    # Categoria: selectbox poblado desde sheet Entregables filtrado por area
     nueva_categoria = st.selectbox("Categoría", options=cats_area)
-    # Entregables para la categoria y area
-    # si la hoja contiene columnas con mayúsculas distintas; usar get y fillna
     if nueva_categoria and nueva_categoria != "(Sin categorías en Entregables)":
         mask = (df_ent["Area"].str.strip().str.lower() == area.strip().lower()) & (df_ent["Categoria"].str.strip().str.lower() == str(nueva_categoria).strip().lower())
         posibles = df_ent[mask]["Entregable"].dropna().unique().tolist()
@@ -253,11 +227,9 @@ with col_a:
 
     nuevo_entregable = st.selectbox("Entregable / Tarea", options=posibles)
     nota_descr = st.text_area("Descripción / Comentarios (libre)", value="", height=140)
-
     archivo = st.file_uploader("Subir archivo entregable (PDF/Word/Excel)", type=["pdf","docx","xlsx"], key="uploader")
 
 with col_b:
-    # Prioridad: intentar obtener opciones desde el sheet (para area+categoria), si no usar estándar
     prioridad_options = []
     if nueva_categoria and nueva_categoria != "(Sin categorías en Entregables)":
         pri = df_ent[ (df_ent["Area"].str.strip().str.lower() == area.strip().lower()) & (df_ent["Categoria"].str.strip().str.lower() == str(nueva_categoria).strip().lower()) ]["Prioridad"].dropna().unique().tolist()
@@ -265,61 +237,14 @@ with col_b:
     if not prioridad_options:
         prioridad_options = ["Baja","Media","Alta"]
 
-    # Fecha compromiso: si el entregable existe en sheet, intentar prellenar fecha
     default_date = None
-    if nuevo_entregable and nuevo_entregable not in ("(Sin entregables en esta categoría)","(Sin entregables disponibles)"):
-        row_match = df_ent[
-            (df_ent["Area"].str.strip().str.lower() == area.strip().lower()) &
-            (df_ent["Categoria"].str.strip().str.lower() == str(nueva_categoria).strip().lower()) &
-            (df_ent["Entregable"].str.strip().str.lower() == str(nuevo_entregable).strip().lower())
-        ]
-        if not row_match.empty:
-            # intentar leer 'Fecha Compromiso' o 'Fecha Compromiso' variantes
-            date_col = None
-            for col_try in ["Fecha Compromiso","Fecha compromiso","Fecha Entrega","FechaEntrega","Fecha"]:
-                if col_try in row_match.columns:
-                    date_col = col_try
-                    break
-            if date_col:
-                val = row_match.iloc[0].get(date_col)
-                if pd.notna(val) and val != "":
-                    try:
-                        # convertir con pandas
-                        dt = pd.to_datetime(val, dayfirst=True, errors='coerce')
-                        if pd.notna(dt):
-                            default_date = dt.date()
-                    except Exception:
-                        default_date = None
-            # prioridad por defecto desde hoja
-            try:
-                p = row_match.iloc[0].get("Prioridad") or row_match.iloc[0].get("prioridad") or None
-                if p and str(p).strip() and str(p).strip() in prioridad_options:
-                    prioridad_default = str(p).strip()
-                else:
-                    prioridad_default = prioridad_options[0]
-            except Exception:
-                prioridad_default = prioridad_options[0]
-        else:
-            prioridad_default = prioridad_options[0]
-    else:
-        prioridad_default = prioridad_options[0]
-
-    # Mostrar los controles con valores por defecto si existían
-    prioridad = st.selectbox("Prioridad", options=prioridad_options, index=max(0, prioridad_options.index(prioridad_default) if prioridad_default in prioridad_options else 0))
-    # Fecha compromiso control
-    if default_date:
-        fecha_compromiso = st.date_input("Fecha compromiso", value=default_date)
-    else:
-        fecha_compromiso = st.date_input("Fecha compromiso", value=datetime.today().date())
-
-    # Responsable (por defecto dueño del proceso)
+    prioridad_default = prioridad_options[0]
+    fecha_compromiso = st.date_input("Fecha compromiso", value=datetime.today().date())
     responsable = st.text_input("Responsable", value=info.get("Dueño del Proceso",""))
-
-    # Estado: libre (texto)
     estado = st.text_input("Estado", value="Pendiente")
 
 # ---------------------------
-# CHAT / CONSULTA IA (asistente) - usa contexto del area
+# CHAT / CONSULTA IA
 # ---------------------------
 st.subheader("💬 Consultar IA sobre cláusulas o entregables")
 pregunta_ia = st.text_input("Escribe tu duda o consulta sobre ISO 9001 para tu área:", key="pregunta_ia")
@@ -349,32 +274,24 @@ Responde de manera clara, práctica y breve, indicando si aplica y qué acciones
             st.error(f"Ocurrió un error inesperado al consultar la IA: {e}")
 
 # ---------------------------
-# GUARDAR ENTREGABLE: subir a Drive y registrar SOLO en hoja Carga (A,E columnas exactas)
+# GUARDAR ENTREGABLE (Dropbox)
 # ---------------------------
-DRIVE_FOLDER_ID = "1ueBPvyVPoSkz0VoLXIkulnwLw3am3WYX"
-drive_service = None
-
-
-def subir_archivo_drive(service_drive, archivo, carpeta_id):
-    # archivo: st.uploaded_file object
+def subir_archivo_dropbox(archivo, carpeta="/Entregables"):
+    token = st.secrets.get("DROPBOX_ACCESS_TOKEN")
+    if not token:
+        st.error("No se encontró DROPBOX_ACCESS_TOKEN en Streamlit Secrets.")
+        return ""
+    dbx = dropbox.Dropbox(token)
     archivo_bytes = archivo.read()
-    fh = io.BytesIO(archivo_bytes)
-    media = MediaIoBaseUpload(fh, mimetype=archivo.type, resumable=False)
-    file_metadata = {"name": archivo.name, "parents": [carpeta_id]}
-    created = service_drive.files().create(body=file_metadata, media_body=media, fields="id").execute()
-    return created.get("id")
-
-def hacer_publico(service_drive, file_id):
+    dropbox_path = f"{carpeta}/{archivo.name}"
     try:
-        # permiso público lectura
-        service_drive.permissions().create(
-            fileId=file_id,
-            body={"role": "reader", "type": "anyone"},
-            fields="id"
-        ).execute()
-    except Exception:
-        # si falla por permisos insuficientes, seguimos sin detener el flujo
-        pass
+        dbx.files_upload(archivo_bytes, dropbox_path, mode=dropbox.files.WriteMode.overwrite)
+        shared_link_metadata = dbx.sharing_create_shared_link_with_settings(dropbox_path)
+        url = shared_link_metadata.url.replace("?dl=0", "?dl=1")
+        return url
+    except Exception as e:
+        st.error(f"Error subiendo archivo a Dropbox: {e}")
+        return ""
 
 def asegurar_hoja_carga(sh_obj):
     try:
@@ -383,7 +300,6 @@ def asegurar_hoja_carga(sh_obj):
         try:
             sh_obj.add_worksheet(title="Carga", rows="1000", cols="10")
             ws = sh_obj.worksheet("Carga")
-            # encabezado exacto solicitado
             ws.append_row(["Area","Categoria","Entregable","Fecha Entrega","Link Documento"])
         except Exception:
             ws = None
@@ -394,32 +310,12 @@ if st.button("💾 Guardar entregable"):
         st.warning("Selecciona un entregable válido antes de guardar.")
     else:
         file_link = ""
-        # Subir archivo a Drive si se cargó
         if archivo is not None:
-            try:
-                if drive_service is None:
-                    drive_service = get_drive_service()
-
-                file_id = subir_archivo_drive(drive_service, archivo, DRIVE_FOLDER_ID)
-                # intentar hacer público (anyone with link)
-                try:
-                    hacer_publico(drive_service, file_id)
-                except Exception:
-                    pass
-
-                file_link = f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
-
-                st.success("Archivo subido a Google Drive correctamente.")
+            file_link = subir_archivo_dropbox(archivo)
+            if file_link:
+                st.success("Archivo subido a Dropbox correctamente.")
                 st.markdown(f"**Link del archivo:** {file_link}")
-
-            except Exception as e:
-                st.warning(f"Error subiendo archivo a Drive: {e}")
-                file_link = ""
-
-        # FORMATO de fecha a string
         fecha_str = fecha_compromiso.strftime("%Y-%m-%d")
-
-        # Solo guardamos en la hoja "Carga" con EXACTAMENTE estas 5 columnas
         try:
             ws_carga = asegurar_hoja_carga(sh)
             if ws_carga:
@@ -427,7 +323,7 @@ if st.button("💾 Guardar entregable"):
                 ws_carga.append_row(row_carga)
                 st.success("Registro añadido en hoja 'Carga'.")
             else:
-                st.error("No se pudo acceder o crear la hoja 'Carga'. Verifica permisos.")
+                st.error("No se pudo acceder o crear la hoja 'Carga'.")
         except Exception as e:
             st.error(f"No se pudo registrar en hoja 'Carga': {e}")
 
@@ -491,4 +387,5 @@ if footer_img:
         st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#0033cc;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
 else:
     st.markdown("<div class='small' style='text-align:center;margin-top:20px;color:#0033cc;'>Formulario automatizado · Mantenimiento ISO · Generado con IA</div>", unsafe_allow_html=True)
+
 
