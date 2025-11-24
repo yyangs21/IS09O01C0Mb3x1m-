@@ -87,21 +87,16 @@ def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
         raise
 
 # ---------------------------
-# ---------------------------
 # GSPREAD CLIENT (OAuth desde Streamlit Secrets)
 # ---------------------------
 def get_gspread_client_oauth_secrets():
-    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    
-    # Leer credenciales desde Streamlit secrets
-    creds_json_str = st.secrets.get("SERVICE_ACCOUNT_JSON")
-    if not creds_json_str:
+    creds_dict = st.secrets.get("SERVICE_ACCOUNT_JSON")
+    if not creds_dict:
         st.error("No se encontró SERVICE_ACCOUNT_JSON en Streamlit Secrets.")
         st.stop()
-    
-    creds_dict = st.secrets["SERVICE_ACCOUNT_JSON"]
-    
-    # Autorizar
+    # Reemplazar \n por saltos de línea reales en private_key
+    if "private_key" in creds_dict:
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
     gc = gspread.service_account_from_dict(creds_dict)
     return gc
 
@@ -109,21 +104,22 @@ def get_gspread_client_oauth_secrets():
 # GOOGLE DRIVE SERVICE (OAuth desde secrets)
 # ---------------------------
 def get_drive_service_oauth_secrets():
-    creds_json_str = st.secrets.get("SERVICE_ACCOUNT_JSON")
-    if not creds_json_str:
+    creds_dict = st.secrets.get("SERVICE_ACCOUNT_JSON")
+    if not creds_dict:
         st.error("No se encontró SERVICE_ACCOUNT_JSON en Streamlit Secrets.")
         st.stop()
-    
-    creds_dict = st.secrets["SERVICE_ACCOUNT_JSON"]
+    if "private_key" in creds_dict:
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
     gc = gspread.service_account_from_dict(creds_dict)
     creds = gc.auth  # credenciales de google-auth
-    
     drive_service = build("drive", "v3", credentials=creds)
     return drive_service
 
 # ---------------------------
 # Uso
 # ---------------------------
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1mQY0_MEjluVT95iat5_5qGyffBJGp2n0hwEChvp2Ivs"
+
 gc = get_gspread_client_oauth_secrets()
 try:
     sh = gc.open_by_url(SHEET_URL)
