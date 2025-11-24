@@ -93,7 +93,7 @@ def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
         raise
 
 # ---------------------------
-def get_oauth_creds(scopes, token_file="token.pickle", credentials_file="credentials.json"):
+def get_oauth_creds(scopes, token_file="token.pickle", credentials_file="credentials.json.json.json"):
     creds = None
     if os.path.exists(token_file):
         with open(token_file, "rb") as f:
