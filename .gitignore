@@ -1,6 +1,10 @@
-credentials.json
+# Archivos sensibles
 .env
-".env" 
-"credentials.json" 
-"service_account.json" 
-credentials.json.json 
+credentials.json
+credentials.json.json
+service_account.json
+
+# Archivos de cache y Python
+token.pickle
+__pycache__/
+*.pyc
