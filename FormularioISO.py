@@ -3,6 +3,7 @@ import streamlit as st
 import tempfile
 import pandas as pd
 import gspread
+from google.oauth2.service_account import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 import pickle
