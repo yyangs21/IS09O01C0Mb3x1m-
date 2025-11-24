@@ -2,7 +2,9 @@
 import streamlit as st
 import pandas as pd
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+import pickle
 import json
 import io
 import os
@@ -107,18 +109,15 @@ def get_oauth_creds(scopes, token_file="token.pickle", credentials_file="credent
     return creds
 
 def get_gspread_client():
-    scope = ["https://www.googleapis.com/auth/spreadsheets",
-             "https://www.googleapis.com/auth/drive"]
-    creds = get_oauth_creds(scope)
+    scopes = ["https://www.googleapis.com/auth/spreadsheets",
+              "https://www.googleapis.com/auth/drive"]
+    creds = get_oauth_creds(scopes)
     return gspread.authorize(creds)
 
-# ---------------------------
-# GOOGLE DRIVE SERVICE con OAuth
-# ---------------------------
 def get_drive_service():
-    scope = ["https://www.googleapis.com/auth/drive"]
-    creds = get_oauth_creds(scope)
-    return build('drive', 'v3', credentials=creds)
+    scopes = ["https://www.googleapis.com/auth/drive"]
+    creds = get_oauth_creds(scopes)
+    return build("drive", "v3", credentials=creds)
 
 # ---------------------------
 # LEER SHEETS
@@ -351,12 +350,7 @@ Responde de manera clara, práctica y breve, indicando si aplica y qué acciones
 # ---------------------------
 DRIVE_FOLDER_ID = "1ueBPvyVPoSkz0VoLXIkulnwLw3am3WYX"
 drive_service = None
-# inicializar drive_service solo si hay archivo o al intentar usar
-if "service_account.json" in os.listdir(".") or "SERVICE_ACCOUNT_JSON" in st.secrets:
-    try:
-        drive_service = get_drive_service()
-    except Exception:
-        drive_service = None
+
 
 def subir_archivo_drive(service_drive, archivo, carpeta_id):
     # archivo: st.uploaded_file object
