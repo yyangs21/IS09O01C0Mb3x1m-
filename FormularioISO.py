@@ -91,38 +91,34 @@ def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
         raise
 
 # ---------------------------
-# GSPREAD CLIENT
-# ---------------------------
+def get_oauth_creds(scopes, token_file="token.pickle", credentials_file="credentials.json"):
+    creds = None
+    if os.path.exists(token_file):
+        with open(token_file, "rb") as f:
+            creds = pickle.load(f)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(credentials_file, scopes)
+            creds = flow.run_local_server(port=0)
+        with open(token_file, "wb") as f:
+            pickle.dump(creds, f)
+    return creds
+
 def get_gspread_client():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    if "SERVICE_ACCOUNT_JSON" in st.secrets:
-        sa_info = st.secrets["SERVICE_ACCOUNT_JSON"]
-        sa_json = json.loads(sa_info) if isinstance(sa_info, str) else sa_info
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_json, scope)
-        return gspread.authorize(creds)
-    elif os.path.exists("service_account.json"):
-        creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
-        return gspread.authorize(creds)
-    else:
-        st.error("No se encontró credencial de Google Sheets. Añade SERVICE_ACCOUNT_JSON en Streamlit Secrets o sube service_account.json local.")
-        st.stop()
+    scope = ["https://www.googleapis.com/auth/spreadsheets",
+             "https://www.googleapis.com/auth/drive"]
+    creds = get_oauth_creds(scope)
+    return gspread.authorize(creds)
 
 # ---------------------------
-# GOOGLE DRIVE SERVICE
+# GOOGLE DRIVE SERVICE con OAuth
 # ---------------------------
 def get_drive_service():
     scope = ["https://www.googleapis.com/auth/drive"]
-    if "SERVICE_ACCOUNT_JSON" in st.secrets:
-        sa_info = st.secrets["SERVICE_ACCOUNT_JSON"]
-        sa_json = json.loads(sa_info) if isinstance(sa_info, str) else sa_info
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_json, scope)
-        return build('drive', 'v3', credentials=creds)
-    elif os.path.exists("service_account.json"):
-        creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
-        return build('drive', 'v3', credentials=creds)
-    else:
-        st.error("No se encontró credencial de Google Drive.")
-        st.stop()
+    creds = get_oauth_creds(scope)
+    return build('drive', 'v3', credentials=creds)
 
 # ---------------------------
 # LEER SHEETS
