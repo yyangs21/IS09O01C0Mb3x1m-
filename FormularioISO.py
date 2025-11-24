@@ -8,7 +8,7 @@ import pickle
 import json
 import io
 import os
-@@ -52,11 +54,9 @@ def load_image_try(path):
+def load_image_try(path):
 if OPENAI_KEY:
     openai.api_key = OPENAI_KEY
 
@@ -20,7 +20,7 @@ def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
     try:
         if hasattr(openai, "chat") and hasattr(openai.chat, "completions"):
             resp = openai.chat.completions.create(
-@@ -65,20 +65,17 @@ def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
+def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
                 temperature=temperature,
                 max_tokens=max_tokens
             )
@@ -41,7 +41,7 @@ def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
             try:
                 return resp.choices[0].message['content']
             except Exception:
-@@ -87,64 +84,64 @@ def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
+def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
                 except Exception:
                     return str(resp)
     except Exception as e:
