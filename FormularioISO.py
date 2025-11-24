@@ -93,41 +93,33 @@ def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
         # rebota la excepción para manejo en UI
         raise
 
-# ---------------------------
-def get_oauth_creds(scopes):
-    creds_json_str = st.secrets.get("SERVICE_CREDENTIALS_JSON")
-    if not creds_json_str:
-        raise RuntimeError("No se encontró SERVICE_CREDENTIALS_JSON en Streamlit Secrets.")
-
-    with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".json") as f:
-        f.write(creds_json_str)
-        temp_file = f.name
-
-    # Usar flujo por consola (headless) en Streamlit Cloud
-    flow = InstalledAppFlow.from_client_secrets_file(temp_file, scopes)
-    creds = flow.run_console()  # <-- Cambiado de run_local_server a run_console()
-
-    os.remove(temp_file)
-    return creds
-
-# ---------------------------
-# Cliente gspread
+# Cliente gspread con Service Account (Streamlit Cloud)
 # ---------------------------
 def get_gspread_client():
+    creds_json_str = st.secrets.get("SERVICE_ACCOUNT_JSON")
+    if not creds_json_str:
+        raise RuntimeError("No se encontró SERVICE_ACCOUNT_JSON en Streamlit Secrets.")
+
+    creds_dict = json.loads(creds_json_str)
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
-    creds = get_oauth_creds(scopes)
-    return gspread.authorize(creds)
+    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    return gspread.authorize(credentials)
 
 # ---------------------------
-# Cliente Google Drive
+# Cliente Google Drive con Service Account
 # ---------------------------
 def get_drive_service():
+    creds_json_str = st.secrets.get("SERVICE_ACCOUNT_JSON")
+    if not creds_json_str:
+        raise RuntimeError("No se encontró SERVICE_ACCOUNT_JSON en Streamlit Secrets.")
+
+    creds_dict = json.loads(creds_json_str)
     scopes = ["https://www.googleapis.com/auth/drive"]
-    creds = get_oauth_creds(scopes)
-    return build('drive', 'v3', credentials=creds)
+    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    return build('drive', 'v3', credentials=credentials)
 # ---------------------------
 # LEER SHEETS
 # ---------------------------
