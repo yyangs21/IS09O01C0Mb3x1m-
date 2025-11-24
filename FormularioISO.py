@@ -87,47 +87,64 @@ def query_openai(prompt, model="gpt-3.5-turbo", temperature=0.2, max_tokens=700)
         raise
 
 # ---------------------------
-# GSPREAD CLIENT (OAuth desde Streamlit Secrets)
+# GSPREAD CLIENT (OAuth usuario)
 # ---------------------------
-def get_gspread_client_oauth_secrets():
-    creds_dict = st.secrets.get("SERVICE_ACCOUNT_JSON")
-    if not creds_dict:
-        st.error("No se encontró SERVICE_ACCOUNT_JSON en Streamlit Secrets.")
-        st.stop()
-    # Reemplazar \n por saltos de línea reales en private_key
-    if "private_key" in creds_dict:
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-    gc = gspread.service_account_from_dict(creds_dict)
-    return gc
+def get_gspread_client_oauth():
+    import gspread
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    from google.auth.transport.requests import Request
+    import pickle
+
+    SCOPES = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive.file"
+    ]
+    creds = None
+    token_file = "token.pickle"
+
+    if os.path.exists(token_file):
+        with open(token_file, "rb") as f:
+            creds = pickle.load(f)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            creds_dict = st.secrets.get("SERVICE_ACCOUNT_JSON")
+            if not creds_dict:
+                st.error("No se encontró SERVICE_ACCOUNT_JSON en Streamlit Secrets.")
+                st.stop()
+            flow = InstalledAppFlow.from_client_config(creds_dict, SCOPES)
+            creds = flow.run_local_server(port=0)
+
+        # Guardar token
+        with open(token_file, "wb") as f:
+            pickle.dump(creds, f)
+
+    gc = gspread.authorize(creds)
+    return gc, creds
 
 # ---------------------------
-# GOOGLE DRIVE SERVICE (OAuth desde secrets)
+# GOOGLE DRIVE SERVICE (OAuth usuario)
 # ---------------------------
-def get_drive_service_oauth_secrets():
-    creds_dict = st.secrets.get("SERVICE_ACCOUNT_JSON")
-    if not creds_dict:
-        st.error("No se encontró SERVICE_ACCOUNT_JSON en Streamlit Secrets.")
-        st.stop()
-    if "private_key" in creds_dict:
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-    gc = gspread.service_account_from_dict(creds_dict)
-    creds = gc.auth  # credenciales de google-auth
+def get_drive_service_oauth():
+    from googleapiclient.discovery import build
+    gc, creds = get_gspread_client_oauth()
     drive_service = build("drive", "v3", credentials=creds)
     return drive_service
 
 # ---------------------------
-# Uso
+# USO
 # ---------------------------
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1mQY0_MEjluVT95iat5_5qGyffBJGp2n0hwEChvp2Ivs"
-
-gc = get_gspread_client_oauth_secrets()
+gc, creds = get_gspread_client_oauth()
 try:
     sh = gc.open_by_url(SHEET_URL)
 except Exception as e:
     st.error(f"Error accediendo a Google Sheets: {e}")
     st.stop()
 
-drive_service = get_drive_service_oauth_secrets()
+drive_service = get_drive_service_oauth()
+
 
 # ---------------------------
 # LEER SHEETS
