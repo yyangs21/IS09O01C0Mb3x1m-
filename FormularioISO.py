@@ -99,7 +99,7 @@ def get_gspread_client_oauth_secrets():
         st.error("No se encontró SERVICE_ACCOUNT_JSON en Streamlit Secrets.")
         st.stop()
     
-    creds_dict = json.loads(creds_json_str)
+    creds_dict = st.secrets["SERVICE_ACCOUNT_JSON"]
     
     # Autorizar
     gc = gspread.service_account_from_dict(creds_dict)
@@ -114,7 +114,7 @@ def get_drive_service_oauth_secrets():
         st.error("No se encontró SERVICE_ACCOUNT_JSON en Streamlit Secrets.")
         st.stop()
     
-    creds_dict = json.loads(creds_json_str)
+    creds_dict = st.secrets["SERVICE_ACCOUNT_JSON"]
     gc = gspread.service_account_from_dict(creds_dict)
     creds = gc.auth  # credenciales de google-auth
     
