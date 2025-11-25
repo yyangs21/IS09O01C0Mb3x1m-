@@ -2,6 +2,7 @@
 import streamlit as st
 import tempfile
 import pandas as pd
+from ai.iso_brain import responder_con_iso
 import gspread
 from google.oauth2.service_account import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -256,6 +257,7 @@ if st.button("Preguntar a la IA"):
         st.warning("Escribe tu consulta antes de enviar.")
     else:
         try:
+            # 🔹 Preparamos el contexto habitual que tú ya usas
             contexto = f"""
 Eres un experto en Sistemas de Gestión de Calidad ISO 9001.
 Área: {area}
@@ -264,14 +266,19 @@ Puesto: {info.get('Puesto')}
 Cláusulas aplicables: {', '.join([str(x.get('Clausula','')) for x in cl_area.to_dict('records')]) if not cl_area.empty else 'N/A'}
 Entregables asignados: {', '.join([str(x.get('Entregable','')) for x in ent_area.to_dict('records')]) if not ent_area.empty else 'N/A'}
 
-Consulta del usuario: {pregunta_ia}
-
-Responde de manera clara, práctica y breve, indicando si aplica y qué acciones recomendarías.
+Consulta del usuario:
+{pregunta_ia}
 """
-            respuesta = query_openai(contexto, model="gpt-3.5-turbo", temperature=0.2, max_tokens=500)
+
+            # 🔹 NUEVA FUNCIONALIDAD → IA entrenada con tu PDF ISO
+            respuesta = responder_con_iso(contexto)
+
+            # 🔹 Mostrar respuesta con tu diseño
             st.markdown(f"<div class='card'>{respuesta}</div>", unsafe_allow_html=True)
+
         except Exception as e:
-            st.error(f"Ocurrió un error inesperado al consultar la IA: {e}")
+            st.error(f"Ocurrió un error inesperado al consultar la IA contextualizada (ISO): {e}")
+
 
 # ---------------------------
 # GUARDAR ENTREGABLE (Dropbox)
