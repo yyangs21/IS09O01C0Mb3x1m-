@@ -2,7 +2,7 @@
 import streamlit as st
 import tempfile
 import pandas as pd
-from ai.iso_brain import responder_con_iso}
+from ai.iso_brain import responder_con_iso
 from openai import OpenAI as OpenAI_client_for_runtime
 import gspread
 from google.oauth2.service_account import Credentials
