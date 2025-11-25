@@ -1,59 +1,59 @@
-import os
 import pickle
-import tiktoken
-from rank_bm25 import BM25Okapi
+import numpy as np
 from openai import OpenAI
+import os
 
-# Carga del vectorstore generado por iso_vectorstore.py
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STORE_PATH = os.path.join(BASE_DIR, "..", "data", "iso_store.pkl")
+VECTOR_PATH = os.path.join("ai", "iso_store.pkl")
 
-client = OpenAI()
+# Cargar vectorstore desde el repositorio
+with open(VECTOR_PATH, "rb") as f:
+    VECTOR_DATA = pickle.load(f)
 
-def cargar_vectorstore():
-    if not os.path.exists(STORE_PATH):
-        return None
-    
-    with open(STORE_PATH, "rb") as f:
-        return pickle.load(f)
+def cosine_similarity(a, b):
+    a = np.array(a)
+    b = np.array(b)
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
-vectorstore = cargar_vectorstore()
+def obtener_contexto(query, api_key):
+    client = OpenAI(api_key=api_key)
 
-def buscar_contexto(query, k=3):
-    """Retorna los fragmentos más relevantes usando BM25"""
-    if not vectorstore:
-        return []
-    
-    bm25 = BM25Okapi(vectorstore["tokens"])
-    scores = bm25.get_scores(query.split())
-    top_idx = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:k]
-    
-    return [vectorstore["chunks"][i] for i in top_idx]
+    emb = client.embeddings.create(
+        input=query,
+        model="text-embedding-3-large"
+    ).data[0].embedding
 
-def responder_con_iso(pregunta):
-    """Construye respuesta integrando los mejores fragmentos del PDF"""
-    if not vectorstore:
-        return "Aún no se ha generado la base de conocimiento ISO. Ejecuta iso_vectorstore.py"
+    resultados = []
+    for item in VECTOR_DATA:
+        sim = cosine_similarity(emb, item["embedding"])
+        resultados.append((sim, item["texto"]))
 
-    contexto = buscar_contexto(pregunta)
+    resultados = sorted(resultados, key=lambda x: x[0], reverse=True)
+
+    top = [text for _, text in resultados[:3]]
+
+    return "\n\n".join(top)
+
+def responder(query, api_key):
+    contexto = obtener_contexto(query, api_key)
+
+    client = OpenAI(api_key=api_key)
 
     prompt = f"""
-Eres un experto en Sistemas de Gestión ISO 9001.
-Usa los siguientes fragmentos del documento oficial para responder:
+Responde usando únicamente el siguiente contexto ISO:
 
+CONTEXTO:
 {contexto}
 
-Pregunta del usuario:
-{pregunta}
+PREGUNTA:
+{query}
 
-Da una respuesta clara, profesional y basada en el documento.
+RESPUESTA:
 """
 
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2,
-        max_tokens=600
+        model="gpt-4.1-mini",
+        messages=[{"role": "user", "content": prompt}]
     )
 
-    return response.choices[0].message["content"]
+    return response.choices[0].message.content
+
