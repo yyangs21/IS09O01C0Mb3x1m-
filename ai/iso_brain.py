@@ -33,7 +33,7 @@ def obtener_contexto(query, api_key):
 
     return "\n\n".join(top)
 
-def responder(query, api_key):
+def responder_con_iso(query, api_key):
     contexto = obtener_contexto(query, api_key)
 
     client = OpenAI(api_key=api_key)
