@@ -296,11 +296,22 @@ Entregables asignados: {', '.join([str(x.get('Entregable','')) for x in ent_area
 # GUARDAR ENTREGABLE (Dropbox)
 # ---------------------------
 def subir_archivo_dropbox(archivo, carpeta="/Entregables"):
-    token = st.secrets.get("DROPBOX_ACCESS_TOKEN")
-    if not token:
-        st.error("No se encontró DROPBOX_ACCESS_TOKEN en Streamlit Secrets.")
+    # Leer secrets
+    refresh_token = st.secrets.get("DROPBOX_REFRESH_TOKEN")
+    app_key = st.secrets.get("DROPBOX_APP_KEY")
+    app_secret = st.secrets.get("DROPBOX_APP_SECRET")
+
+    if not refresh_token or not app_key or not app_secret:
+        st.error("Faltan secretos de Dropbox: DROPBOX_REFRESH_TOKEN, APP_KEY o APP_SECRET")
         return ""
-    dbx = dropbox.Dropbox(token)
+
+    # Conectar usando refresh token (tokens automáticos)
+    dbx = dropbox.Dropbox(
+        oauth2_refresh_token=refresh_token,
+        app_key=app_key,
+        app_secret=app_secret
+    )
+
     archivo_bytes = archivo.read()
     dropbox_path = f"{carpeta}/{archivo.name}"
     try:
@@ -311,6 +322,7 @@ def subir_archivo_dropbox(archivo, carpeta="/Entregables"):
     except Exception as e:
         st.error(f"Error subiendo archivo a Dropbox: {e}")
         return ""
+
 
 def asegurar_hoja_carga(sh_obj):
     try:
