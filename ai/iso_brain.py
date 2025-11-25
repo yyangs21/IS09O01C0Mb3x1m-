@@ -33,11 +33,25 @@ def obtener_contexto(query, api_key):
 
     return "\n\n".join(top)
 
-def responder_con_iso(query, api_key):
-    contexto = obtener_contexto(query, api_key)
+def responder_con_iso(query, api_key=None, client_override=None):
+    client = client_override or OpenAI(api_key=api_key)
 
-    client = OpenAI(api_key=api_key)
+    # Obtener contexto
+    emb = client.embeddings.create(
+        input=query,
+        model="text-embedding-3-large"
+    ).data[0].embedding
 
+    resultados = []
+    for item in VECTOR_DATA:
+        sim = cosine_similarity(emb, item["embedding"])
+        resultados.append((sim, item["texto"]))
+
+    resultados = sorted(resultados, key=lambda x: x[0], reverse=True)
+    top = [text for _, text in resultados[:3]]
+    contexto = "\n\n".join(top)
+
+    # Generar respuesta
     prompt = f"""
 Responde usando únicamente el siguiente contexto ISO:
 
@@ -49,11 +63,9 @@ PREGUNTA:
 
 RESPUESTA:
 """
-
     response = client.chat.completions.create(
         model="gpt-4.1-mini",
         messages=[{"role": "user", "content": prompt}]
     )
 
     return response.choices[0].message.content
-
