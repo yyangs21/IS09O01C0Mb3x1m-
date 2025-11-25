@@ -2,7 +2,8 @@
 import streamlit as st
 import tempfile
 import pandas as pd
-from ai.iso_brain import responder_con_iso
+from ai.iso_brain import responder_con_iso}
+from openai import OpenAI as OpenAI_client_for_runtime
 import gspread
 from google.oauth2.service_account import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -245,7 +246,7 @@ with col_b:
     estado = st.text_input("Estado", value="Pendiente")
 
 # ---------------------------
-# CHAT / CONSULTA IA
+# CHAT / CONSULTA IA (RAG integrando tu ISO)
 # ---------------------------
 st.subheader("💬 Consultar IA sobre cláusulas o entregables")
 pregunta_ia = st.text_input("Escribe tu duda o consulta sobre ISO 9001 para tu área:", key="pregunta_ia")
@@ -257,28 +258,39 @@ if st.button("Preguntar a la IA"):
         st.warning("Escribe tu consulta antes de enviar.")
     else:
         try:
-            # 🔹 Preparamos el contexto habitual que tú ya usas
-            contexto = f"""
-Eres un experto en Sistemas de Gestión de Calidad ISO 9001.
+            # Contexto del area (igual que antes)
+            contexto_base = f"""
 Área: {area}
 Dueño del proceso: {info.get('Dueño del Proceso')}
 Puesto: {info.get('Puesto')}
 Cláusulas aplicables: {', '.join([str(x.get('Clausula','')) for x in cl_area.to_dict('records')]) if not cl_area.empty else 'N/A'}
 Entregables asignados: {', '.join([str(x.get('Entregable','')) for x in ent_area.to_dict('records')]) if not ent_area.empty else 'N/A'}
-
-Consulta del usuario:
-{pregunta_ia}
 """
+            # Montar pregunta final (la pasaremos al RAG)
+            pregunta_para_iso = f"{contexto_base}\n\nConsulta del usuario:\n{pregunta_ia}"
 
-            # 🔹 NUEVA FUNCIONALIDAD → IA entrenada con tu PDF ISO
-            respuesta = responder_con_iso(contexto)
+            # Inicializar cliente OpenAI para uso en iso_brain (usamos la misma OPENAI_KEY/streamlit secrets)
+            # Si OPENAI_KEY está definida como variable global en tu script, la usará el módulo.
+            # Para forzar un client aquí (por ejemplo cuando st.secrets setea la key), hacemos:
+            try:
+                # Intenta crear un cliente local con la misma key de entorno/secrets
+                runtime_key = OPENAI_KEY  # ya definido arriba en tu script
+                runtime_client = OpenAI_client_for_runtime(api_key=runtime_key) if runtime_key else None
+            except Exception:
+                runtime_client = None
 
-            # 🔹 Mostrar respuesta con tu diseño
+            # Llamada RAG centralizada
+            if runtime_client:
+                respuesta = responder_con_iso(pregunta_para_iso, client_override=runtime_client)
+            else:
+                # fallback: el módulo intentará usar su client interno (que depende de env)
+                respuesta = responder_con_iso(pregunta_para_iso)
+
+            # Mostrar resultado
             st.markdown(f"<div class='card'>{respuesta}</div>", unsafe_allow_html=True)
 
         except Exception as e:
             st.error(f"Ocurrió un error inesperado al consultar la IA contextualizada (ISO): {e}")
-
 
 # ---------------------------
 # GUARDAR ENTREGABLE (Dropbox)
